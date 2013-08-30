@@ -2,7 +2,7 @@
 #
 
 TARGET = libfat2fs.a
-OBJS = boot_sector.o fatfs.o dir_entry.o fs_fat.o
+OBJS = boot_sector.o fatfs.o dir_entry.o fs_fat.o utils.o
 
 all: create_kos_link defaultall
 

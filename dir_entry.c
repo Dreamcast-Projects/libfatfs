@@ -1,46 +1,14 @@
 
+#include <errno.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "utils.h"
 #include "fatfs.h"
 #include "fat_defs.h"
 #include "dir_entry.h"
-
-/* http://stackoverflow.com/questions/122616/how-do-i-trim-leading-trailing-whitespace-in-a-standard-way */
-char *trimwhitespace(char *str)
-{
-  char *end;
-
-  // Trim leading space
-  while(isspace(*str)) str++;
-
-  if(*str == 0)  // All spaces?
-    return str;
-
-  // Trim trailing space
-  end = str + strlen(str) - 1;
-  while(end > str && isspace(*end)) end--;
-
-  // Write new null terminator
-  *(end+1) = 0;
-
-  return str;
-}
-
-unsigned char * remove_all_uchars(const unsigned char* str, unsigned char c) {
-    unsigned char *copy = (unsigned char *)malloc(strlen(str));
-	strcpy(copy,str);
-    unsigned char *pr = copy, *pw = copy;
-    while (*pr) {
-        *pw = *pr++;
-        pw += (*pw != c);
-    }
-    *pw = '\0';
-	
-	return copy;
-}
 
 char * ExtractLongName(fat_lfn_entry_t *lfn) 
 {
@@ -595,6 +563,7 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
     char c;
     char *pch;
     char *filename;
+    char *entry_filename;
     char *ufn = (char *)malloc(strlen(fn)+1);
     node_entry_t *target = root;
     node_entry_t *child;
@@ -603,7 +572,7 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
 
     memset(ufn, 0, strlen(fn)+1);
 
-    /* Make sure the files/folders are captialized */
+    /* Make sure the files/folders are capitalized */
     while (fn[i])
     {
        c = fn[i];
@@ -633,24 +602,49 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
             {
                 filename = pch; // We possibly have the filename
                 
+                printf("Possible Filename: %s\n", filename);
+                
                 // Return NULL if we encounter a directory that doesn't exist
                 if(pch = strtok (NULL, "/")) { // See if there is more to parse through
+                    errno = ENOTDIR;
                     return NULL;               // if there is that means we are looking in a directory
                 }                              // that doesn't exist.
                 
-                // Otherwise create file
+                // Make sure the filename is valid 
+                if(correct_filename(filename) == -1)
+                {
+                    return NULL;
+                }
+                
+                // Directory trees file/folder names are always capitalized 
+                // Make sure we get the original case of the filename to save to SD
+                entry_filename = (char *)malloc(strlen(filename) + 1);
+                memset(entry_filename, 0, strlen(filename) + 1);
+                strncpy(entry_filename, fn + (strlen(fn) - strlen(filename)), strlen(filename));
+                entry_filename[strlen(filename)] = '\0';
+                
+                printf("Entry Filename: %s\n", entry_filename);
+           
+                // Create file
                 newfile = (node_entry_t *) malloc(sizeof(node_entry_t));
-                
-                // Restricted characters in files and folder  \ / ? : * " > < | and length < 260 make sure > 0
-                
-                
                 newfile->Name = filename;
                 newfile->Attr = ARCHIVE;
                 newfile->FileSize = 0;
-                newfile->Data_Clusters = allocate_cluster(fat, NULL);
+                newfile->Data_Clusters = NULL; 
                 newfile->Parent = child;
                 newfile->Children = NULL;  // Files cant have children
                 newfile->Next = NULL;      // Adding to end of Parent(var child) list of children
+                
+                if(create_entry(fat, entry_filename, newfile) == -1)
+                {
+                    delete_tree_entry(newfile);  //This doesn't take care of removing clusters from SD card
+                    errno = EDQUOT;
+                    return NULL;  
+                }
+                
+                // Make sure locations was changed.
+                
+                // Created file on SD successfully. Now add this new file to the directory tree
                 
                 temp = child->Children;
                 
@@ -667,22 +661,33 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
                     }
                     
                     temp->Next = newfile;
-                }
-                
-                create_entry(fat, newfile);
-                
-                // Make sure locations was changed.
+                }      
                 
                 return newfile;
             }
         }
     }
     
+    // Path was invalid from the beginning
+    errno = ENOTDIR;
     return NULL;
 }
 
-int create_entry(fatfs_t *fat, node_entry_t *newfile)
+int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 {
+    // If this is a file and the file name is greater than #, make lfn entries
+    if(newfile->Attr == ARCHIVE && strlen(entry_name) > 8)
+    {
+        
+    }
+    else if(newfile->Attr == DIRECTORY && strlen(entry_name) > 11)
+    {
+        
+    }
+    else
+    {
+        printf("What are you trying to create here? This isnt a bakery@!\n");
+    }
     
     return 0;
 }

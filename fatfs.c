@@ -11,24 +11,12 @@
 #include <stdlib.h>
 #include <inttypes.h>
 
+#include "utils.h"
 #include "fat_defs.h"
 #include "dir_entry.h"
 #include "boot_sector.h"
 
 static int initted = 0;
-
-char * remove_all_chars(const char* str, char c) {
-	char *copy = (char *)malloc(strlen(str));
-	strcpy(copy,str);
-    	char *pr = copy, *pw = copy;
-    	while (*pr) {
-        	*pw = *pr++;
-        	pw += (*pw != c);
-   	}
-    	*pw = '\0';
-	
-	return copy;
-}
 
 /* Read the Fat table from the SD card and stores it in table */
 void read_fat_table(fatfs_t *fat, unsigned char **table) 

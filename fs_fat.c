@@ -70,12 +70,16 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     }
     else if(found == NULL && (mode & O_CREAT)) {
          found = create_file(mnt->fs, mnt->fs->root, ufn);
+         
+         if(found == NULL)
+             return NULL;
     }
     
     /* Set filesize to 0 if we set mode to O_TRUNC */
     if((mode & O_TRUNC) && ((mode & O_WRONLY) || (mode & O_RDWR)))
     {
         found->FileSize = 0;
+        // Also change FAT table. I.E. delete all clusters associated with this file.
     }
 
     /* Find a free file handle */
