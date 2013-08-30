@@ -239,7 +239,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 				new_entry->Name = (char *)malloc(strlen(lfnbuf1));
 				strcpy(new_entry->Name, lfnbuf1);
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
-				printf("FullName: \"%s\"\n", new_entry->Name);
+				printf("FullName: \"%s\" StrLen(%d)\n", new_entry->Name, strlen(new_entry->Name));
 			}
 			else if(lfnbuf1[0] != '\0')
 			{
@@ -248,7 +248,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 				new_entry->Name = (char *)malloc(strlen(lfnbuf1));
 				strcpy(new_entry->Name, lfnbuf1);
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
-				printf("FullName: \"%s\"\n", new_entry->Name);
+				printf("FullName: \"%s\" StrLen(%d)\n", new_entry->Name, strlen(new_entry->Name));
 			}
 			else {
 				printf("LONGNAME :2\n");
@@ -256,7 +256,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 				new_entry->Name = (char *)malloc(strlen(lfnbuf2));
 				strcpy(new_entry->Name, lfnbuf2);
 				memset(lfnbuf2, 0, sizeof(lfnbuf2));
-				printf("FullName: \"%s\"\n", new_entry->Name);
+				printf("FullName: \"%s\" StrLen(%d)\n", new_entry->Name, strlen(new_entry->Name));
 			}			
 			
 			new_entry->Attr = temp.Attr;
@@ -676,6 +676,8 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
 int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 {
     fat_dir_entry_t entry;
+    
+    // NOTE PERIODS SHOULDN'T count towards char length.
     
     // If this is a file and the file name is greater than 8, make lfn entries
     if(newfile->Attr == ARCHIVE && strlen(entry_name) > 8)
