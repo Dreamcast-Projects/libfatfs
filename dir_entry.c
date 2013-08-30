@@ -268,7 +268,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 			new_entry->Children = NULL;
 			new_entry->Next = NULL;
 			
-			printf("File: %s Parent: %s\n", new_entry->Name, parent->Name);
+			printf("File: %s Parent: %s  Attr: %x\n", new_entry->Name, parent->Name, new_entry->Attr);
 			
 			if(parent->Children == NULL) {
 				parent->Children = new_entry;
