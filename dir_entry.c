@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "fatfs.h"
 #include "fat_defs.h"
 #include "dir_entry.h"
 
@@ -129,16 +130,16 @@ node_entry_t *isChildof(node_entry_t *children, char *child_name) {
 node_entry_t *fat_search_by_path(node_entry_t *root, char *fn)
 {
     int i = 0;
-	char c;
-	char *pch;
-	char *ufn = (char *)malloc(strlen(fn)+1);
-	node_entry_t *target = root;
-	node_entry_t *child;
-	
-	memset(ufn, 0, strlen(fn)+1);
-	
-	/* Make sure the files/folders are captialized */
-	while (fn[i])
+    char c;
+    char *pch;
+    char *ufn = (char *)malloc(strlen(fn)+1);
+    node_entry_t *target = root;
+    node_entry_t *child;
+
+    memset(ufn, 0, strlen(fn)+1);
+
+    /* Make sure the files/folders are captialized */
+    while (fn[i])
     {
        c = fn[i];
        ufn[i] = (char)toupper(c);
@@ -147,38 +148,38 @@ node_entry_t *fat_search_by_path(node_entry_t *root, char *fn)
 
     pch = strtok(ufn,"/");
 	
-	if(strcmp(pch, target->Name) == 0) {
-		pch = strtok (NULL, "/");
-		
-		if(pch != NULL) {
-			child = target->Children;
-		}
-			
-		while(pch != NULL) {
-			if(target = isChildof(child, pch)) 
-			{
-				pch = strtok (NULL, "/");
-				//printf("Next: %s\n", pch);
-				if(pch != NULL) {
-					child = target->Children;
-				}
-			}
-			else 
-			{
-				printf("Couldnt find %s\n",pch);
-				return NULL;
-			}
-		}
-	}
-	else {
-		return NULL;
-	}
-	
-	free(ufn);
-	return target;
+    if(strcmp(pch, target->Name) == 0) {
+            pch = strtok (NULL, "/");
+
+            if(pch != NULL) {
+                    child = target->Children;
+            }
+
+            while(pch != NULL) {
+                    if(target = isChildof(child, pch)) 
+                    {
+                            pch = strtok (NULL, "/");
+                            //printf("Next: %s\n", pch);
+                            if(pch != NULL) {
+                                    child = target->Children;
+                            }
+                    }
+                    else 
+                    {
+                            printf("Couldnt find %s\n",pch);
+                            return NULL;
+                    }
+            }
+    }
+    else {
+            return NULL;
+    }
+
+    free(ufn);
+    return target;
 }
 
-void ParseDirectorySector(fatfs_t *fat, node_entry_t *parent, int sector_loc, unsigned char *fat_table) 
+void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, unsigned char *fat_table) 
 {
 	int i, j;
 	int var = 0;
@@ -319,7 +320,7 @@ void ParseDirectorySector(fatfs_t *fat, node_entry_t *parent, int sector_loc, un
 				do {	
 				    new_sector_loc = fat->data_sec_loc + (node->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster; // Calculate sector loc from cluster given
 					for(j = 0;j < fat->boot_sector.sectors_per_cluster; j++) {
-						ParseDirectorySector(fat, new_entry, new_sector_loc + j, fat_table);
+						parse_directory_sector(fat, new_entry, new_sector_loc + j, fat_table);
 					}
 					node = node->Next;
 				}while(node != NULL);
@@ -437,8 +438,16 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, uint8_t *bbuf, int count, i
 		}
 
 		/* Check if node equals NULL. If it does then allocate another cluster for this file */
+                if(node == NULL)
+                {
+                    if(node = allocate_cluster(fat, file->Data_Clusters))
+                    {
+                        printf("All out of clusters to Allocate\n");
+                        return -1;
+                    }
+                }
 
-		/* Calculate Sector Location from cluster and sector we want to read */
+		/* Calculate Sector Location from cluster and sector we want to read and then write to */
 		sector_loc = fat->data_sec_loc + ((node->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster) + numOfSector; 
 
 		/* Clear out before reading into */
@@ -485,7 +494,8 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	fat->dev->read_blocks(fat->dev, file->Location[0], 1, sector);
 
 	/* Edit Entry */
-	memcpy(sector + file->Location[1] + FILESIZE, &(file->FileSize), 4);
+        
+	memcpy(sector + file->Location[1] + FILESIZE, &(file->FileSize), 4); // Edit Filesize
 
 	/* Write it back */
 	fat->dev->write_blocks(fat->dev, file->Location[0], 1, sector);
@@ -493,33 +503,146 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	return;
 }
 
-void DeleteTreeEntry(node_entry_t * node)
+void delete_tree_entry(node_entry_t * node)
 {
     cluster_node_t  *old;
+    
     free(node->Name); // Free the name
     
+    // Free the LL Data Clusters
     while(node->Data_Clusters)
     {
         old = node->Data_Clusters;
         node->Data_Clusters = node->Data_Clusters->Next;
         free(old);
     }
+    
+    node = NULL;
 }
 
-void DeleteDirectoryTree(node_entry_t * node)
+void delete_directory_tree(node_entry_t * node)
 {
     static int count = 0;
     
     if(node == NULL)
         return;
     
-    DeleteDirectoryTree(node->Next);
-    DeleteDirectoryTree(node->Children);
+    delete_directory_tree(node->Next);
+    delete_directory_tree(node->Children);
     
     if(node->Next == NULL && node->Children == NULL)
     {
-        DeleteTreeEntry(node);
+        delete_tree_entry(node);
         count++;
         printf("Count: %d\n", count);
     }
+}
+
+cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
+{
+    int fat_index = 2;
+    int cluster_num = -1;
+    cluster_node_t *clust = cluster;
+    cluster_node_t *temp = NULL;
+    
+    unsigned char *fat_table;
+    
+    read_fat_table(fat, &fat_table); 
+    
+    // Handle NULL cluster(Happens when a new file is created)
+    if(cluster != NULL) {  
+        while(clust->Next)
+        {
+            clust = clust->Next;
+        }
+    }
+    
+    // We are now at the end of the LL. Search for a free cluster.
+    while(fat_index < fat->boot_sector.bytes_per_sector*fat->boot_sector.table_size_16) { // Go through Table one index at a time
+        memcpy(&cluster_num,&fat_table[fat_index*2], 2);
+        
+        // If we found a free entry
+        if(cluster_num == 0)
+        {
+            cluster_num = 0xFFF8;
+            if(cluster != NULL) // Cant change what doesnt exist
+                memcpy(&fat_table[clust->Cluster_Num*2], &fat_index, 2); // Change the table to indicate an allocated cluster
+            memcpy(&fat_table[fat_index*2], &cluster_num, 2); // Change the table to indicate new end of file
+            write_fat_table(fat,fat_table); // Write table back to SD
+            
+            temp = (cluster_node_t *)malloc(sizeof(cluster_node_t));
+            temp->Cluster_Num = fat_index;
+            temp->Next = NULL;
+
+            if(cluster != NULL)
+                clust->Next = temp;
+            
+            return temp;
+        }
+        else
+        {
+            fat_index++;
+        }
+    }
+    
+    /* Didn't find a free cluster */
+    return NULL;
+}
+
+node_entry_t *create_file(node_entry_t * root, char *fn)
+{
+    int i = 0;
+    char c;
+    char *pch;
+    char *filename;
+    char *ufn = (char *)malloc(strlen(fn)+1);
+    node_entry_t *target = root;
+    node_entry_t *child;
+    node_entry_t *temp;
+
+    memset(ufn, 0, strlen(fn)+1);
+
+    /* Make sure the files/folders are captialized */
+    while (fn[i])
+    {
+       c = fn[i];
+       ufn[i] = (char)toupper(c);
+       i++;
+    }
+
+    pch = strtok(ufn,"/");
+	
+    if(strcmp(pch, target->Name) == 0) {
+        pch = strtok (NULL, "/");
+
+        if(pch != NULL) {
+            child = target->Children;
+        }
+
+        while(pch != NULL) {
+            if(target = isChildof(child, pch)) 
+            {
+                pch = strtok (NULL, "/");
+                //printf("Next: %s\n", pch);
+                if(pch != NULL) {
+                    child = target->Children;
+                }
+            }
+            else 
+            {
+                filename = pch; // We possibly have the filename
+                
+                // Return NULL if we encounter a directory that doesn't exist
+                if(pch = strtok (NULL, "/")) { // See if there is more to parse through
+                    return NULL;               // if there is that means we are looking in a directory
+                }                              // that doesn't exist.
+                
+                // Otherwise create file (Children is where you want to add this entry),child->Parent)
+                
+                return temp;
+            }
+        }
+    }
+    
+    return NULL;
 }

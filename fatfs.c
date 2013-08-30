@@ -31,21 +31,36 @@ char * remove_all_chars(const char* str, char c) {
 }
 
 /* Read the Fat table from the SD card and stores it in table */
-void GetFAT_Table(fatfs_t *fat, unsigned char **table) 
+void read_fat_table(fatfs_t *fat, unsigned char **table) 
 {
-	int i = 0;
-	unsigned char *temp = (unsigned char *)malloc(512*sizeof(unsigned char));
-	*table = (unsigned char *)malloc(fat->boot_sector.bytes_per_sector*fat->boot_sector.table_size_16*sizeof(unsigned char));
-	
-	memset(temp, 0, 512*sizeof(unsigned char));
-	memset((*table), 0, fat->boot_sector.bytes_per_sector*fat->boot_sector.table_size_16*sizeof(unsigned char));
-	
-	for(i = 0; i < fat->boot_sector.table_size_16; i++) {
-		fat->dev->read_blocks(fat->dev, fat->file_alloc_tab_sec_loc + i, 1, temp);
-		memcpy((*table) + 512*i, temp, 512);
-	}
-	
-	free(temp);
+    int i = 0;
+    unsigned char *temp = (unsigned char *)malloc(512*sizeof(unsigned char));
+    *table = (unsigned char *)malloc(fat->boot_sector.bytes_per_sector*fat->boot_sector.table_size_16*sizeof(unsigned char));
+
+    memset(temp, 0, 512*sizeof(unsigned char));
+    memset((*table), 0, fat->boot_sector.bytes_per_sector*fat->boot_sector.table_size_16*sizeof(unsigned char));
+
+    for(i = 0; i < fat->boot_sector.table_size_16; i++) {
+            fat->dev->read_blocks(fat->dev, fat->file_alloc_tab_sec_loc + i, 1, temp);
+            memcpy((*table) + 512*i, temp, 512);
+    }
+
+    free(temp);
+}
+
+void write_fat_table(fatfs_t *fat, unsigned char *table) 
+{
+    int i;
+    unsigned char *temp = (unsigned char *)malloc(512*sizeof(unsigned char));
+    memset(temp, 0, 512*sizeof(unsigned char));
+    
+    for(i = 0; i < fat->boot_sector.table_size_16; i++) {
+        //memcpy((*table) + 512*i, temp, 512);
+        memcpy(temp, table + 512*i, 512);
+        fat->dev->write_blocks(fat->dev, fat->file_alloc_tab_sec_loc + i, 1, temp);
+    }
+    
+    free(temp);
 }
 
 fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
@@ -119,11 +134,11 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	rv->root->Next = NULL;          /* Should always be NULL. Root is the top most directory and has no equals */
 
 	/* Get FAT */
-	GetFAT_Table(rv,&fat_table); 
+	read_fat_table(rv,&fat_table); 
 	
 	/*  Build Directory Tree */
 	for(i = 0; i < rv->root_dir_sectors_num; i++) {
-		ParseDirectorySector(rv, rv->root, rv->root_dir_sec_loc + i, fat_table); 
+		parse_directory_sector(rv, rv->root, rv->root_dir_sec_loc + i, fat_table); 
 	}	
 
 	free(fat_table);
@@ -136,7 +151,7 @@ void fat_fs_shutdown(fatfs_t *fs) {
     fs->dev->shutdown(fs->dev);
     
     // Free the Directory tree fs->root
-    DeleteDirectoryTree(fs->root);
+    delete_directory_tree(fs->root);
 
     free(fs);
 }

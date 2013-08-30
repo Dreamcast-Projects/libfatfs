@@ -39,38 +39,44 @@ static struct {
     int           mode;       /* O_RDONLY, O_WRONLY, O_RDWR, O_TRUNC, O_DIR, etc */
     uint32        ptr;        /* Current read position in bytes */
     dirent_t      dirent;     /* A static dirent to pass back to clients */
-	node_entry_t  *node;
-	node_entry_t  *dir;       /* Used by opendir */
+    node_entry_t  *node;
+    node_entry_t  *dir;       /* Used by opendir */
     fs_fat_fs_t   *mnt;       /* Which mount instance are we using? */
 } fh[MAX_FAT_FILES];
 
 /* Open a file or directory */
 static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     file_t fd;
-	char *ufn = (char *)malloc(strlen(fn)+4); // 4:  3 for "/sd" and 1 for null character
+    char *ufn = (char *)malloc(strlen(fn)+4); // 4:  3 for "/sd" and 1 for null character
     fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
-	node_entry_t *found = NULL;
+    node_entry_t *found = NULL;
 
-	memset(ufn, 0, strlen(fn)+4);    // 4:  3 for "/sd" and 1 for null character
+    memset(ufn, 0, strlen(fn)+4);    // 4:  3 for "/sd" and 1 for null character
 
-	strcat(ufn, "/sd");
-	strcat(ufn, fn);
+    strcat(ufn, "/sd");
+    strcat(ufn, fn);
 
-	/* Find the object in question */
+    /* Find the object in question */
     found = fat_search_by_path(mnt->fs->root, ufn);
 
-	/* Handle a few errors */
-	if(found == NULL && !(mode & O_CREAT)) {
-		errno = ENOENT;
+    /* Handle a few errors */
+    if(found == NULL && !(mode & O_CREAT)) {
+        errno = ENOENT;
         return NULL;
-	}
-	else if(found != NULL && (mode & O_CREAT) && (mode & O_EXCL)) {
-		errno = EEXIST;
-		return NULL;
-	}
-	else if(found == NULL && (mode & O_CREAT)) {
-		// found = CreateFile();
-	}
+    }
+    else if(found != NULL && (mode & O_CREAT) && (mode & O_EXCL)) {
+        errno = EEXIST;
+        return NULL;
+    }
+    else if(found == NULL && (mode & O_CREAT)) {
+         found = create_file(mnt->fs->root, ufn);
+    }
+    
+    /* Set filesize to 0 if we set mode to O_TRUNC */
+    if((mode & O_TRUNC) && ((mode & O_WRONLY) || (mode & O_RDWR)))
+    {
+        found->FileSize = 0;
+    }
 
     /* Find a free file handle */
     mutex_lock(&fat_mutex);
@@ -89,8 +95,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     }
 
     /* Make sure we're not trying to open a directory for writing */
-	if((found->Attr & DIRECTORY) &&
-       (mode & (O_WRONLY | O_RDWR))) {
+    if((found->Attr & DIRECTORY) && (mode & (O_WRONLY | O_RDWR))) {
         errno = EISDIR;
         mutex_unlock(&fat_mutex);
         return NULL;
@@ -107,8 +112,8 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     fh[fd].mode = mode;
     fh[fd].ptr = 0;
     fh[fd].mnt = mnt;
-	fh[fd].node = found;
-	fh[fd].dir = NULL;
+    fh[fd].node = found;
+    fh[fd].dir = NULL;
 
     mutex_unlock(&fat_mutex);
 
@@ -123,13 +128,13 @@ static void fs_fat_close(void * h) {
     if(fd < MAX_FAT_FILES && fh[fd].mode) {
         fh[fd].used = 0;
         fh[fd].mode = 0;
-		fh[fd].ptr = 0;
+        fh[fd].ptr = 0;
 
-        /* This will require more work probably when we support writing, but for
-           now this is enough... */
-		// Change file size
-		// Change time
-		 update_fat_entry(fh[fd].mnt->fs, fh[fd].node);
+        // If it was open for writing make sure to update entry on SD card
+        // Change file size
+        // Change time
+        if(fh[fd].mode & O_WRONLY || fh[fd].mode & O_RDWR)
+            update_fat_entry(fh[fd].mnt->fs, fh[fd].node);
     }
 
     mutex_unlock(&fat_mutex);
@@ -152,21 +157,28 @@ static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
         return -1;
     }
 
-	if(fh[fd].mode & O_DIR) {
+    // Check and make sure it is not a directory
+    if(fh[fd].mode & O_DIR) {
         mutex_unlock(&fat_mutex);
         errno = EISDIR;
+        return -1;
+    }
+    
+    // Check and make sure it is opened for reading
+    if(fh[fd].mode & O_WRONLY) {
+        mutex_unlock(&fat_mutex);
+        errno = EBADF;
         return -1;
     }
 
     // Do we have enough left? 
     if((fh[fd].ptr + cnt) > fh[fd].node->FileSize)
-	{
+    {
         cnt = fh[fd].node->FileSize - fh[fd].ptr;
-		//printf("Changed bytes to be read to %d", cnt);
-	}
+    }
 
-	// Make sure we clean out the string that we are going to return 
-	memset(bbuf, 0, sizeof(bbuf));
+    // Make sure we clean out the string that we are going to return 
+    memset(bbuf, 0, sizeof(bbuf));
 
     fs = fh[fd].mnt->fs;
     rv = (ssize_t)cnt;
@@ -177,26 +189,26 @@ static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
         return -1;
     }
 
-	memcpy(bbuf, block, cnt);
-	bbuf[cnt] = '\0';
-	fh[fd].ptr += cnt;
+    memcpy(bbuf, block, cnt);
+    bbuf[cnt] = '\0';
+    fh[fd].ptr += cnt;
 
     /* We're done, clean up and return. */
     mutex_unlock(&fat_mutex);
+    
+    free(block);
 
     return rv;
 }
 
 static ssize_t fs_fat_write(void *h, void *buf, size_t cnt)
 {
-	file_t fd = ((file_t)h) - 1;
+    file_t fd = ((file_t)h) - 1;
     fatfs_t *fs;
-    uint32_t bytes_per_sector;
-    uint8_t *block;
     uint8_t *bbuf = (uint8_t *)malloc(sizeof(uint8_t)*(cnt+1)); // 
     ssize_t rv;
 
-	mutex_lock(&fat_mutex);
+    mutex_lock(&fat_mutex);
 
     // Check that the fd is valid 
     if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
@@ -204,29 +216,42 @@ static ssize_t fs_fat_write(void *h, void *buf, size_t cnt)
         errno = EINVAL;
         return -1;
     }
-
-	fs = fh[fd].mnt->fs;
-    rv = (ssize_t)cnt;
-
-	// Copy the bytes we want to write
-	strncpy(bbuf, buf, cnt);
-	bbuf[cnt] = '\0';
-	
-	if(!fat_write_data(fs, fh[fd].node, bbuf, cnt, fh[fd].ptr)) {
-		mutex_unlock(&fat_mutex);
+    
+    // Check and make sure it is opened for Writing
+    if(fh[fd].mode & O_RDONLY) {
+        mutex_unlock(&fat_mutex);
         errno = EBADF;
         return -1;
-	}
+    }
+    
+    fs = fh[fd].mnt->fs;
+    rv = (ssize_t)cnt;
+
+    // Copy the bytes we want to write
+    strncpy(bbuf, buf, cnt);
+    bbuf[cnt] = '\0';
+    
+    // If we set mode to O_APPEND, then make sure we write to end of file
+    if(fh[fd].mode & O_APPEND)
+    {
+        fh[fd].ptr = fh[fd].node->FileSize;
+    }
 	
-	fh[fd].ptr += cnt;
-	fh[fd].node->FileSize = (fh[fd].ptr > fh[fd].node->FileSize) ? fh[fd].ptr : fh[fd].node->FileSize; // Increase the file size if need be
+    if(!fat_write_data(fs, fh[fd].node, bbuf, cnt, fh[fd].ptr)) {
+        mutex_unlock(&fat_mutex);
+        errno = EBADF;
+        return -1;
+    }
 
-	// Write it to the FAT
-	update_fat_entry(fs, fh[fd].node);
+    fh[fd].ptr += cnt;
+    fh[fd].node->FileSize = (fh[fd].ptr > fh[fd].node->FileSize) ? fh[fd].ptr : fh[fd].node->FileSize; // Increase the file size if need be
 
-	mutex_unlock(&fat_mutex);
+    // Write it to the FAT
+    //update_fat_entry(fs, fh[fd].node);
 
-	return rv;
+    mutex_unlock(&fat_mutex);
+
+    return rv;
 }
 
 static off_t fs_fat_seek(void *h, off_t offset, int whence) {
@@ -264,7 +289,7 @@ static off_t fs_fat_seek(void *h, off_t offset, int whence) {
 
     /* Check bounds */ 
     if(fh[fd].ptr > fh[fd].node->FileSize) 
-		fh[fd].ptr = fh[fd].node->FileSize;
+        fh[fd].ptr = fh[fd].node->FileSize;
 
     rv = (off_t)fh[fd].ptr;
 
@@ -320,26 +345,26 @@ static dirent_t *fs_fat_readdir(void *h) {
 
     /* Check that the fd is valid */
     if(fd >= MAX_FAT_FILES || !fh[fd].used || !(fh[fd].mode & O_DIR)) {
-		printf("This file descriptor is NOT valid. Exited ReadDir\n");
+	//printf("This file descriptor is NOT valid. Exited ReadDir\n");
         mutex_unlock(&fat_mutex);
         errno = EINVAL;
         return NULL;
     }
 
-	/* Get the children of this folder if NULL */
-	if(fh[fd].dir == NULL) 
-	{
-		fh[fd].dir = fh[fd].node->Children;
-	} 
-	/* Move on to the next child */
-	else  
-	{
-		fh[fd].dir = fh[fd].dir->Next;
-	}
+    /* Get the children of this folder if NULL */
+    if(fh[fd].dir == NULL) 
+    {
+        fh[fd].dir = fh[fd].node->Children;
+    } 
+    /* Move on to the next child */
+    else  
+    {
+        fh[fd].dir = fh[fd].dir->Next;
+    }
 	
     /* Make sure we're not at the end of the directory */
     if(fh[fd].dir == NULL) {
-		//printf("Reached End of Directory\n");
+	//printf("Reached End of Directory\n");
         mutex_unlock(&fat_mutex);
         return NULL;
     }
@@ -348,7 +373,7 @@ static dirent_t *fs_fat_readdir(void *h) {
     fh[fd].dirent.size = fh[fd].dir->FileSize;
     memcpy(fh[fd].dirent.name, fh[fd].dir->Name, strlen(fh[fd].dir->Name));
     fh[fd].dirent.name[strlen(fh[fd].dir->Name)] = 0;
-	fh[fd].dirent.attr = fh[fd].dir->Attr;
+    fh[fd].dirent.attr = fh[fd].dir->Attr;
     fh[fd].dirent.time = 0; //inode->i_mtime;
    // fh[fd].ptr += dent->rec_len;
 
@@ -480,7 +505,7 @@ static vfs_handler_t vh = {
     fs_fat_readdir,            /* readdir */
     NULL,                      /* ioctl */
     NULL,                      /* rename */
-    NULL,                      /* unlink */
+    NULL, //fs_fat_unlink      /* unlink(delete a file) */
     NULL,                      /* mmap */
     NULL,                      /* complete */
     fs_fat_stat,               /* stat */

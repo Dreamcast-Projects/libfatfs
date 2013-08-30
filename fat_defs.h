@@ -6,8 +6,6 @@
 __BEGIN_DECLS
 
 #include <kos/blockdev.h>
-
-//#include "dir_entry.h"
 #include "boot_sector.h"
 
 #define FAT16TYPE1 0x04  /* 32MB */
