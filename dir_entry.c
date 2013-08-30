@@ -107,7 +107,7 @@ cluster_node_t * GetClusterList(const unsigned char *table, int start_cluster)
 		temp->Cluster_Num = cluster_num;
 		temp->Next = NULL;
 		memcpy(&cluster_num,&table[cluster_num*2], 2);
-		printf("Next cluster: %x\n", cluster_num);
+		//printf("Next cluster: %x\n", cluster_num);
 	}
 	
 	return start;
