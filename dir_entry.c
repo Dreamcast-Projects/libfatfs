@@ -182,7 +182,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 		/* Check if it is a long filename entry */
 		if((buf+var)[ATTRIBUTE] == LONGFILENAME) { 
 		
-		    //printf("LONGNAME FOUND\n");
+		        printf("LONGNAME FOUND\n");
 			memset(&lfn, 0, sizeof(fat_lfn_entry_t));
 			memcpy(&lfn, buf+var, sizeof(fat_lfn_entry_t));
 		
@@ -203,8 +203,8 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 				}
 			}
 			var += ENTRYSIZE; 
-			continue;
-			//printf("Got through %dth iteration : LONGNAME\n", i);
+			continue; // Continue on to the next entry
+			printf("Got through %dth iteration Sector(%d) : LONGNAME\n", i, sector_loc);
 		}
 		/* Its a file/folder entry */
 		else {
@@ -224,7 +224,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 			// Deal with no long name
 			if(lfnbuf1[0] == '\0' && lfnbuf2[0] == '\0')
 			{
-			   // printf("NO LONGNAME\n");
+			    printf("NO LONGNAME\n");
 			    strcat(lfnbuf1, (const char *)temp.FileName);
 				if(temp.Ext[0] != ' ') { // If we actually have an extension....add it in
 					if(temp.Attr == VOLUME_ID) { // Extension is part of the VOLUME name(node->FileName)
@@ -235,28 +235,28 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 						strcat(lfnbuf1, temp.Ext);
 					}
 				}
-				lfnbuf1 = remove_all_uchars(lfnbuf1,' '); //trimwhitespace(lfnbuf1);
+				lfnbuf1 = remove_all_uchars(lfnbuf1,' '); 
 				new_entry->Name = (char *)malloc(strlen(lfnbuf1));
 				strcpy(new_entry->Name, lfnbuf1);
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
-				//printf("FullName: \"%s\"\n", new_entry->Name);
+				printf("FullName: \"%s\"\n", new_entry->Name);
 			}
 			else if(lfnbuf1[0] != '\0')
 			{
-				//printf("LONGNAME :1\n");
+				printf("LONGNAME :1\n");
 			    
 				new_entry->Name = (char *)malloc(strlen(lfnbuf1));
 				strcpy(new_entry->Name, lfnbuf1);
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
-				//printf("FullName: \"%s\"\n", new_entry->Name);
+				printf("FullName: \"%s\"\n", new_entry->Name);
 			}
 			else {
-				//printf("LONGNAME :2\n");
+				printf("LONGNAME :2\n");
 
 				new_entry->Name = (char *)malloc(strlen(lfnbuf2));
 				strcpy(new_entry->Name, lfnbuf2);
 				memset(lfnbuf2, 0, sizeof(lfnbuf2));
-				//printf("FullName: \"%s\"\n", new_entry->Name);
+				printf("FullName: \"%s\"\n", new_entry->Name);
 			}			
 			
 			new_entry->Attr = temp.Attr;
@@ -268,7 +268,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 			new_entry->Children = NULL;
 			new_entry->Next = NULL;
 			
-			//printf("File: %s Parent: %s\n", new_entry->Name, parent->Name);
+			printf("File: %s Parent: %s\n", new_entry->Name, parent->Name);
 			
 			if(parent->Children == NULL) {
 				parent->Children = new_entry;
@@ -281,7 +281,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 			}
 			
 			if(new_entry->Attr == DIRECTORY && new_entry->Name[0] != 0x2E && !(new_entry->Name[0] == 0x2E && new_entry->Name[1] == 0x2E)) { // Dont do this for .(current direct) and ..(parent) 
-			   // printf("Found a folder !!\n");
+			    printf("Found a folder !!\n");
 			 
 				node = new_entry->Data_Clusters;
 				
@@ -675,7 +675,9 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
 
 int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 {
-    // If this is a file and the file name is greater than #, make lfn entries
+    fat_dir_entry_t entry;
+    
+    // If this is a file and the file name is greater than 8, make lfn entries
     if(newfile->Attr == ARCHIVE && strlen(entry_name) > 8)
     {
         
@@ -684,10 +686,10 @@ int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
     {
         
     }
-    else
-    {
-        printf("What are you trying to create here? This isnt a bakery@!\n");
-    }
+    
+    // Make regular entry and write it to SD FAT
+    entry.Attr = newfile->Attr;
+    entry.FileSize = 0;   // For both new files and new folders
     
     return 0;
 }
