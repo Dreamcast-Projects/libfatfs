@@ -111,9 +111,9 @@ typedef struct node_entry {
 } node_entry_t;
 
 /* Prototypes */
-// int create entry(fatfs_t *fat, char *name, unsigned char attr, node_entry_t *folder);
+int create_entry(fatfs_t *fat, node_entry_t *newfile);
 // int delete entry(fatfs_t *fat, node_entry_t *file);
-node_entry_t *create_file(node_entry_t * root, char *fn);
+node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn);
 cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster);
 void delete_tree_entry(node_entry_t * node);
 void delete_directory_tree(node_entry_t * node);

@@ -69,7 +69,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
         return NULL;
     }
     else if(found == NULL && (mode & O_CREAT)) {
-         found = create_file(mnt->fs->root, ufn);
+         found = create_file(mnt->fs, mnt->fs->root, ufn);
     }
     
     /* Set filesize to 0 if we set mode to O_TRUNC */

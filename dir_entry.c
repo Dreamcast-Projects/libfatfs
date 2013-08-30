@@ -589,7 +589,7 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
     return NULL;
 }
 
-node_entry_t *create_file(node_entry_t * root, char *fn)
+node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
 {
     int i = 0;
     char c;
@@ -599,6 +599,7 @@ node_entry_t *create_file(node_entry_t * root, char *fn)
     node_entry_t *target = root;
     node_entry_t *child;
     node_entry_t *temp;
+    node_entry_t *newfile;
 
     memset(ufn, 0, strlen(fn)+1);
 
@@ -637,12 +638,51 @@ node_entry_t *create_file(node_entry_t * root, char *fn)
                     return NULL;               // if there is that means we are looking in a directory
                 }                              // that doesn't exist.
                 
-                // Otherwise create file (Children is where you want to add this entry),child->Parent)
+                // Otherwise create file
+                newfile = (node_entry_t *) malloc(sizeof(node_entry_t));
                 
-                return temp;
+                // Restricted characters in files and folder  \ / ? : * " > < | and length < 260 make sure > 0
+                
+                
+                newfile->Name = filename;
+                newfile->Attr = ARCHIVE;
+                newfile->FileSize = 0;
+                newfile->Data_Clusters = allocate_cluster(fat, NULL);
+                newfile->Parent = child;
+                newfile->Children = NULL;  // Files cant have children
+                newfile->Next = NULL;      // Adding to end of Parent(var child) list of children
+                
+                temp = child->Children;
+                
+                // Folder has no children. Set Children to be this new file
+                if(temp == NULL)
+                {
+                    child->Children = newfile;
+                }
+                else // Otherwise go to the end of the LL of Children
+                {
+                    while(temp->Next != NULL)
+                    {
+                        temp = temp->Next;
+                    }
+                    
+                    temp->Next = newfile;
+                }
+                
+                create_entry(fat, newfile);
+                
+                // Make sure locations was changed.
+                
+                return newfile;
             }
         }
     }
     
     return NULL;
+}
+
+int create_entry(fatfs_t *fat, node_entry_t *newfile)
+{
+    
+    return 0;
 }
