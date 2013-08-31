@@ -42,7 +42,7 @@ char * ExtractLongName(fat_lfn_entry_t *lfn)
 	}
 	
 	// Remove filler chars at end of the long file name
-	buf = remove_all_uchars(buf, 0xff);
+	buf = remove_all_chars(buf, 0xff);
 	
 	i = 0;
 	
@@ -235,7 +235,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 						strcat(lfnbuf1, temp.Ext);
 					}
 				}
-				lfnbuf1 = remove_all_uchars(lfnbuf1,' '); 
+				lfnbuf1 = remove_all_chars(lfnbuf1,' '); 
 				new_entry->Name = (char *)malloc(strlen(lfnbuf1));
 				strcpy(new_entry->Name, lfnbuf1);
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
