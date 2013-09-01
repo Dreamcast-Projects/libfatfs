@@ -100,7 +100,8 @@ typedef struct cluster_node {
    Files/folders in the same directory are linked together in a Singly-Linked List(*Next) 
 */
 typedef struct node_entry {
-        unsigned char *Name;               /* Holds name of file/folder */
+	unsigned char *Name;               /* Holds name of file/folder */
+	unsigned char *ShortName;          /* Holds the short name (entry). No two files can have the same short name. Can be equal to Name. */
 	unsigned char Attr;                /* Holds the attributes of entry */
 	unsigned int FileSize;             /* Holds the size of the file */
 	unsigned int Location[2];          /* Location in FAT Table. Location[0]: Sector, Location[1]: Byte in that sector */
@@ -124,10 +125,23 @@ node_entry_t *fat_search_by_path(node_entry_t *dir, char *fn);
 void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, unsigned char *fat_table);
 
 
+node_entry_t *isChildof(node_entry_t *children, char *child_name);
+
+
 /* CheckSum
+1 	   Take the ASCII value of the first character. This is your first sum.
+2 	   Rotate all the bits of the sum rightward by one bit.
+3 	   Add the ASCII value of the next character with the value from above. This is your next sum.
+4 	   Repeat steps 2 through 3 until you are all through with the 11 characters in the 8.3 filename. 
+
+int i;
+char sum;
+
 for (sum = i = 0; i < 11; i++) {
     sum = (((sum & 1) << 7) | ((sum & 0xfe) >> 1)) + name[i];
 }
+
+This resulting checksum value is stored in each of the LFN entry to ensure that the short filename it points to indeed is the currently 8.3 entry it should be pointing to. 
 */
 
 __END_DECLS

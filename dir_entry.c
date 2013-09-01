@@ -89,6 +89,10 @@ node_entry_t *isChildof(node_entry_t *children, char *child_name) {
 	    if(strcmp(child->Name, child_name) == 0) {
 		    return child;
 		}
+		else if(strcmp(child->ShortName, child_name) == 0)
+		{
+			return child;
+		}
 		child = child->Next;
 	}
 	
@@ -182,7 +186,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 		/* Check if it is a long filename entry */
 		if((buf+var)[ATTRIBUTE] == LONGFILENAME) { 
 		
-		        printf("LONGNAME FOUND\n");
+			//printf("LONGNAME FOUND\n");
 			memset(&lfn, 0, sizeof(fat_lfn_entry_t));
 			memcpy(&lfn, buf+var, sizeof(fat_lfn_entry_t));
 		
@@ -204,7 +208,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 			}
 			var += ENTRYSIZE; 
 			continue; // Continue on to the next entry
-			printf("Got through %dth iteration Sector(%d) : LONGNAME\n", i, sector_loc);
+			//printf("Got through %dth iteration Sector(%d) : LONGNAME\n", i, sector_loc);
 		}
 		/* Its a file/folder entry */
 		else {
@@ -237,26 +241,54 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 				}
 				lfnbuf1 = remove_all_chars(lfnbuf1,' '); 
 				new_entry->Name = (char *)malloc(strlen(lfnbuf1));
+				new_entry->ShortName = (char *)malloc(strlen(lfnbuf1));
 				strcpy(new_entry->Name, lfnbuf1);
+				strcpy(new_entry->ShortName, lfnbuf1);  // Added
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
-				printf("FullName: \"%s\" StrLen(%d)\n", new_entry->Name, strlen(new_entry->Name));
+				//printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName);
 			}
 			else if(lfnbuf1[0] != '\0')
 			{
-				printf("LONGNAME :1\n");
-			    
+				//printf("LONGNAME :1\n");
+			    strcat(lfnbuf2, (const char *)temp.FileName);
+				if(temp.Ext[0] != ' ') { // If we actually have an extension....add it in
+					if(temp.Attr == VOLUME_ID) { // Extension is part of the VOLUME name(node->FileName)
+						strcat(lfnbuf2, temp.Ext);
+					}
+					else {
+						strcat(lfnbuf2, ".");
+						strcat(lfnbuf2, temp.Ext);
+					}
+				}
+				
 				new_entry->Name = (char *)malloc(strlen(lfnbuf1));
+				new_entry->ShortName = (char *)malloc(strlen(lfnbuf2));
 				strcpy(new_entry->Name, lfnbuf1);
+				strcpy(new_entry->ShortName, lfnbuf2);  // Added
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
-				printf("FullName: \"%s\" StrLen(%d)\n", new_entry->Name, strlen(new_entry->Name));
+				memset(lfnbuf2, 0, sizeof(lfnbuf1));
+				//printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName);
 			}
 			else {
-				printf("LONGNAME :2\n");
-
+				//printf("LONGNAME :2\n");
+				strcat(lfnbuf1, (const char *)temp.FileName);
+				if(temp.Ext[0] != ' ') { // If we actually have an extension....add it in
+					if(temp.Attr == VOLUME_ID) { // Extension is part of the VOLUME name(node->FileName)
+						strcat(lfnbuf1, temp.Ext);
+					}
+					else {
+						strcat(lfnbuf1, ".");
+						strcat(lfnbuf1, temp.Ext);
+					}
+				}
+				
 				new_entry->Name = (char *)malloc(strlen(lfnbuf2));
+				new_entry->ShortName = (char *)malloc(strlen(lfnbuf1));
 				strcpy(new_entry->Name, lfnbuf2);
+				strcpy(new_entry->ShortName, lfnbuf1);  // Added
+				memset(lfnbuf1, 0, sizeof(lfnbuf1));
 				memset(lfnbuf2, 0, sizeof(lfnbuf2));
-				printf("FullName: \"%s\" StrLen(%d)\n", new_entry->Name, strlen(new_entry->Name));
+				//printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName);
 			}			
 			
 			new_entry->Attr = temp.Attr;
@@ -268,7 +300,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 			new_entry->Children = NULL;
 			new_entry->Next = NULL;
 			
-			printf("File: %s Parent: %s  Attr: %x\n", new_entry->Name, parent->Name, new_entry->Attr);
+			printf("FileName: %s ShortName: %s Parent: %s  Attr: %x\n", new_entry->Name, new_entry->ShortName, parent->Name, new_entry->Attr);
 			
 			if(parent->Children == NULL) {
 				parent->Children = new_entry;
@@ -281,7 +313,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 			}
 			
 			if(new_entry->Attr == DIRECTORY && new_entry->Name[0] != 0x2E && !(new_entry->Name[0] == 0x2E && new_entry->Name[1] == 0x2E)) { // Dont do this for .(current direct) and ..(parent) 
-			    printf("Found a folder !!\n");
+			    //printf("Found a folder !!\n");
 			 
 				node = new_entry->Data_Clusters;
 				
@@ -679,7 +711,7 @@ int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
     
     // NOTE PERIODS SHOULDN'T count towards char length.
     
-    // If this is a file and the file name is greater than 8, make lfn entries
+    // If this is a file and the file name is greater than 8 OR contains lower case letters, make lfn entries
     if(newfile->Attr == ARCHIVE && strlen(entry_name) > 8)
     {
         
