@@ -24,6 +24,13 @@ typedef struct fatfs fatfs_t;
 #define STARTCLUSTER 0x1A
 #define FILESIZE  0x1C
 
+/* Long file offsets */
+#define ORDER     0x0
+#define FNPART1   0x1
+#define CHECKSUM  0xE
+#define FNPART2   0xF
+#define FNPART3   0x1D
+
 /* Other */
 #define ENTRYSIZE 32       /* Size of an entry whether it be a lfn or just a regular file entry */
 #define DELETED   0xE5     /* The first byte of a deleted entry */
@@ -100,7 +107,8 @@ typedef struct cluster_node {
    Files/folders in the same directory are linked together in a Singly-Linked List(*Next) 
 */
 typedef struct node_entry {
-        unsigned char *Name;               /* Holds name of file/folder */
+	unsigned char *Name;               /* Holds name of file/folder */
+	unsigned char *ShortName;          /* Holds the short name (entry). No two files can have the same short name. Can be equal to Name. */
 	unsigned char Attr;                /* Holds the attributes of entry */
 	unsigned int FileSize;             /* Holds the size of the file */
 	unsigned int Location[2];          /* Location in FAT Table. Location[0]: Sector, Location[1]: Byte in that sector */
@@ -124,11 +132,7 @@ node_entry_t *fat_search_by_path(node_entry_t *dir, char *fn);
 void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, unsigned char *fat_table);
 
 
-/* CheckSum
-for (sum = i = 0; i < 11; i++) {
-    sum = (((sum & 1) << 7) | ((sum & 0xfe) >> 1)) + name[i];
-}
-*/
+node_entry_t *isChildof(node_entry_t *children, char *child_name);
 
 __END_DECLS
 #endif /* _FAT_DIR_ENTRY_H_ */
