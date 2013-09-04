@@ -24,6 +24,13 @@ typedef struct fatfs fatfs_t;
 #define STARTCLUSTER 0x1A
 #define FILESIZE  0x1C
 
+/* Long file offsets */
+#define ORDER     0x0
+#define FNPART1   0x1
+#define CHECKSUM  0xE
+#define FNPART2   0xF
+#define FNPART3   0x1D
+
 /* Other */
 #define ENTRYSIZE 32       /* Size of an entry whether it be a lfn or just a regular file entry */
 #define DELETED   0xE5     /* The first byte of a deleted entry */
@@ -126,23 +133,6 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 
 
 node_entry_t *isChildof(node_entry_t *children, char *child_name);
-
-
-/* CheckSum
-1 	   Take the ASCII value of the first character. This is your first sum.
-2 	   Rotate all the bits of the sum rightward by one bit.
-3 	   Add the ASCII value of the next character with the value from above. This is your next sum.
-4 	   Repeat steps 2 through 3 until you are all through with the 11 characters in the 8.3 filename. 
-
-int i;
-char sum;
-
-for (sum = i = 0; i < 11; i++) {
-    sum = (((sum & 1) << 7) | ((sum & 0xfe) >> 1)) + name[i];
-}
-
-This resulting checksum value is stored in each of the LFN entry to ensure that the short filename it points to indeed is the currently 8.3 entry it should be pointing to. 
-*/
 
 __END_DECLS
 #endif /* _FAT_DIR_ENTRY_H_ */
