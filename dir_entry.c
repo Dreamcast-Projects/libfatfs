@@ -675,6 +675,7 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
 
 int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 {
+    int lfn = 0;
     fat_dir_entry_t entry;
     
     // NOTE PERIODS SHOULDN'T count towards char length.
@@ -682,10 +683,23 @@ int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
     // If this is a file and the file name is greater than 8, make lfn entries
     if(newfile->Attr == ARCHIVE && strlen(entry_name) > 8)
     {
+        lfn = 1;
         
     }
     else if(newfile->Attr == DIRECTORY && strlen(entry_name) > 11)
     {
+        lfn = 1;
+        
+    }
+    
+    if(lfn == 0)
+    {
+        //(entry.FileName);
+        entry.FileName[8] = '\0';
+    }
+    else
+    {
+        
         
     }
     
