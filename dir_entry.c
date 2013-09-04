@@ -569,8 +569,8 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
 		
             cluster_num = 0xFFF8;
             if(cluster != NULL) // Cant change what doesnt exist
-                memcpy(&fat_table[clust->Cluster_Num*2], &fat_index, 2); // Change the table to indicate an allocated cluster
-            memcpy(&fat_table[fat_index*2], &cluster_num, 2); // Change the table to indicate new end of file
+                memcpy(fat_table[clust->Cluster_Num*2], &fat_index, 2); // Change the table to indicate an allocated cluster
+            memcpy(fat_table[fat_index*2], &cluster_num, 2); // Change the table to indicate new end of file
             write_fat_table(fat,fat_table); // Write table back to SD
             
             temp = (cluster_node_t *)malloc(sizeof(cluster_node_t));
