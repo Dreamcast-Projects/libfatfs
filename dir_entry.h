@@ -18,18 +18,18 @@ typedef struct fatfs fatfs_t;
 #define LONGFILENAME 0x0F
 
 /* Important offsets */
-#define FILENAME  0x0
-#define EXTENSION 0x8
-#define ATTRIBUTE 0xB
+#define FILENAME  0x00
+#define EXTENSION 0x08
+#define ATTRIBUTE 0x0B
 #define STARTCLUSTER 0x1A
 #define FILESIZE  0x1C
 
 /* Long file offsets */
-#define ORDER     0x0
-#define FNPART1   0x1
-#define CHECKSUM  0xE
-#define FNPART2   0xF
-#define FNPART3   0x1D
+#define ORDER     0x00
+#define FNPART1   0x01
+#define CHECKSUM  0x0D
+#define FNPART2   0x0E
+#define FNPART3   0x1C
 
 /* Other */
 #define ENTRYSIZE 32       /* Size of an entry whether it be a lfn or just a regular file entry */
@@ -43,14 +43,15 @@ typedef struct fat_long_fn_dir_entry
 	                               The specification says that the last entry value(Order) will be ORed with 0x40(01000000) and it is the mark for last entry
 								   0x80 is marked when LFN entry is deleted
 								*/
-	unsigned short FNPart1[5];  /* The first 5, 2-byte characters of this entry. */
+	unsigned short FNPart1[6];  /* The first 5, 2-byte characters of this entry. */
 	unsigned char Attr;         /* Should only have the value 0x0F (Specifying that it is a long name entry and not an actual file entry) */
 	unsigned char Res;          /* Reserved */
 	unsigned char Checksum;     /* Checksum */
 	unsigned short FNPart2[6];  /* The next 6, 2-byte characters of this entry. */
 	unsigned short Cluster;     /* Unused. Always 0 */
-	unsigned short FNPart3[2];   /* The final 2, 2-byte characters of this entry. */
-} __attribute__((packed)) fat_lfn_entry_t;
+	unsigned short FNPart3[3];   /* The final 2, 2-byte characters of this entry. */
+} fat_lfn_entry_t;
+//__attribute__((packed)) fat_lfn_entry_t;
 
 typedef struct fat_dir_entry 
 {
@@ -70,10 +71,10 @@ typedef struct fat_dir_entry
     unsigned char CrtTimeTenth; /* Creation time in tenths of a second.  */
     unsigned short CrtTime;     /* Taken from http://www.tavi.co.uk/phobos/fat.html#file_time
 	                               <------- 0x17 --------> <------- 0x16 -------->
-                                       15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
-                                        h  h  h  h  h  m  m  m  m  m  m  x  x  x  x  x
+								   15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
+									h  h  h  h  h  m  m  m  m  m  m  x  x  x  x  x
 								   
-				   hhhhh - Indicates the binary number of hours (0-23)
+							       hhhhh - Indicates the binary number of hours (0-23)
                                    mmmmmm - Indicates the binary number of minutes (0-59)
                                    xxxxx - Indicates the binary number of two-second periods (0-29), representing seconds 0 to 58.
                                 */								   

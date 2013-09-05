@@ -69,6 +69,8 @@ cluster_node_t * GetClusterList(const unsigned char *table, int start_cluster)
 	start->Next = NULL;
 	memcpy(&cluster_num, &table[start_cluster*2], 2);
 	
+	printf("Starting cluster: %x\n", start_cluster);
+	
 	while(cluster_num < 0xFFF8 ) {
 		temp->Next = (cluster_node_t *) malloc(sizeof(cluster_node_t));
 		temp = temp->Next;
@@ -81,8 +83,8 @@ cluster_node_t * GetClusterList(const unsigned char *table, int start_cluster)
 	return start;
 }
 
-node_entry_t *isChildof(node_entry_t *children, char *child_name) {
-    node_entry_t *child = children;
+node_entry_t *isChildof(node_entry_t *parent, char *child_name) {
+    node_entry_t *child = parent->Children;
 	
 	while(child != NULL) 
 	{
@@ -124,14 +126,14 @@ node_entry_t *fat_search_by_path(node_entry_t *root, char *fn)
             pch = strtok (NULL, "/");
 
             if(pch != NULL) {
-                    child = target->Children;
+                    child = target;//->Children;
             }
 
             while(pch != NULL) {
                     if(target = isChildof(child, pch)) 
                     {
                             pch = strtok (NULL, "/");
-                            //printf("Next: %s\n", pch);
+                            printf("Next: %s\n", pch);
                             if(pch != NULL) {
                                     child = target->Children;
                             }
@@ -560,17 +562,19 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
     // We are now at the end of the LL. Search for a free cluster.
     while(fat_index < fat->boot_sector.bytes_per_sector*fat->boot_sector.table_size_16) { // Go through Table one index at a time
 	
-        memcpy(&cluster_num, fat_table[fat_index*2], 2);
+        memcpy(&cluster_num, &fat_table[fat_index*2], 2);
+		
+		printf("Cluster num value found: %d\n", cluster_num);
         
         // If we found a free entry
-        if(cluster_num == 0)
+        if(cluster_num == 0xFFFF0000)
         {
             printf("Found a free cluster entry -- Index: %d\n", fat_index);
 		
             cluster_num = 0xFFF8;
             if(cluster != NULL) // Cant change what doesnt exist
-                memcpy(fat_table[clust->Cluster_Num*2], &fat_index, 2); // Change the table to indicate an allocated cluster
-            memcpy(fat_table[fat_index*2], &cluster_num, 2); // Change the table to indicate new end of file
+                memcpy(&fat_table[clust->Cluster_Num*2], &fat_index, 2); // Change the table to indicate an allocated cluster
+            memcpy(&fat_table[fat_index*2], &cluster_num, 2); // Change the table to indicate new end of file
             write_fat_table(fat,fat_table); // Write table back to SD
             
             temp = (cluster_node_t *)malloc(sizeof(cluster_node_t));
@@ -584,6 +588,8 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
             fat_index++;
         }
     }
+	
+	printf("Didnt find a free Cluster\n");
     
     /* Didn't find a free cluster */
     return NULL;
@@ -615,7 +621,7 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
     pch = strtok(ufn,"/");  //pch is equal to sd
 	
     if(strcmp(pch, target->Name) == 0) {
-        pch = strtok (NULL, "/"); // pch is equal to filename to create
+        pch = strtok (NULL, "/"); 
 
         if(pch != NULL) {
             child = target;
@@ -634,7 +640,7 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
             {
                 filename = pch; // We possibly have the filename
                 
-                //printf("Possible Filename: %s\n", filename);
+                printf("Possible Filename: %s\n", filename);
                 
                 // Return NULL if we encounter a directory that doesn't exist
                 if(pch = strtok (NULL, "/")) { // See if there is more to parse through
@@ -655,7 +661,7 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
                 strncpy(entry_filename, fn + (strlen(fn) - strlen(filename)), strlen(filename));
                 entry_filename[strlen(filename)] = '\0';
                 
-                //printf("Entry Filename: %s\n", entry_filename);
+                printf("Entry Filename: %s\n", entry_filename);
            
                 // Create file
                 newfile = (node_entry_t *) malloc(sizeof(node_entry_t));
@@ -746,18 +752,20 @@ int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 		
 		last = i - 1; // Refers to last entry in array
 		
-		lfn_entry_list[last]->Order = 0x40; // See last one to special value order
+		lfn_entry_list[last]->Order |= 0x40; // Set(OR) last one to special value order
 		
 		// Get loc for j amount of entries plus 1(shortname entry). Returns an int array Sector(loc[0]), ptr(loc[1])
-		loc = get_free_locations(fat, newfile->Parent, order-1);
+		loc = get_free_locations(fat, newfile->Parent, (int)order);
 		
 		printf("Sector: %d Ptr: %d\n", loc[0], loc[1]);
 		
 		// Write it(reverse order)
 		for(i = last; i >= 0; i--)
 		{
-			write_entry(fat, lfn_entry_list[i], newfile->Attr, loc);
-		
+			write_entry(fat, lfn_entry_list[i], LONGFILENAME, loc);
+				
+			printf("Wrote lfn entry\n");	
+				
 			// Do calculations for sector if need be
 			loc[1] += 32;
 			
@@ -767,6 +775,8 @@ int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 				loc[1] = 0; // Reset ptr in sector
 			}
 		}
+		
+		printf("Finished writing lfn\n");
         }
 	
 	/* Allocate a cluster */

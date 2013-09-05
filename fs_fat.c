@@ -131,14 +131,18 @@ static void fs_fat_close(void * h) {
 
     if(fd < MAX_FAT_FILES && fh[fd].mode) {
         fh[fd].used = 0;
-        fh[fd].mode = 0;
         fh[fd].ptr = 0;
 
         // If it was open for writing make sure to update entry on SD card
         // Change file size
         // Change time
         if(fh[fd].mode & O_WRONLY || fh[fd].mode & O_RDWR)
+		{
+			printf("Updating File Entry\n");
             update_fat_entry(fh[fd].mnt->fs, fh[fd].node);
+		}
+		
+		fh[fd].mode = 0;
     }
 
     mutex_unlock(&fat_mutex);

@@ -159,13 +159,6 @@ char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char att
 	replace_all_chars(&copy, ":+,;=[]", '_');
 	
 	//printf("Translate illegal Characters: %s\n", copy);
-	
-	
-	
-	
-	
-	
-	
 
 	/* 2. Initial periods, trailing periods, and extra periods prior to the last embedded period are removed.
 	For example ".logon" becomes "logon", "junk.c.o" becomes "junkc.o", and "main." becomes "main". */
@@ -234,7 +227,7 @@ always added to help reduce the conflicts in the 8.3 name space for automatic ge
 	{
 		// Concate the filename
 		memset(temp1, 0, strlen(fn)+1);
-		strcat(temp1, filename);
+		strncpy(temp1, filename, 6);
 		
 		// Append the Value
 		memset(integer_string, 0, 7);
@@ -357,17 +350,32 @@ fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum,
 		strcat(filename, " "); 
 
 	lfn_entry->Order = order;
-	lfn_entry->Attr = 0x0F ; // Specifying it is a long name entry
 	lfn_entry->Checksum = checksum;
 	lfn_entry->Cluster = 0;
-	strncpy(lfn_entry->FNPart1, filename, 5); // Copy First 5
+	//strncpy(lfn_entry->FNPart1, filename, 5); // Copy First 5
+	lfn_entry->FNPart1[0] = filename[0];
+	lfn_entry->FNPart1[1] = filename[1];
+	lfn_entry->FNPart1[2] = filename[2];
+	lfn_entry->FNPart1[3] = filename[3];
+	lfn_entry->FNPart1[4] = filename[4];
 	lfn_entry->FNPart1[5] = '\0';
-	strncpy(lfn_entry->FNPart2, filename+5, 6); // Next 6
+	//strncpy(lfn_entry->FNPart2, filename+5, 6); // Next 6
+	lfn_entry->FNPart2[0] = filename[5];
+	lfn_entry->FNPart2[1] = filename[6];
+	lfn_entry->FNPart2[2] = filename[7];
+	lfn_entry->FNPart2[3] = filename[8];
+	lfn_entry->FNPart2[4] = filename[9];
+	lfn_entry->FNPart2[5] = filename[10];
 	lfn_entry->FNPart2[6] = '\0';
-	strncpy(lfn_entry->FNPart3, filename+11, 2); // Last 2
+	//strncpy(lfn_entry->FNPart3, filename+11, 2); // Last 2
+	lfn_entry->FNPart3[0] = filename[11];
+	lfn_entry->FNPart3[1] = filename[12];
 	lfn_entry->FNPart3[2] = '\0';
 	
-	printf("Generate Long Filename Entry -- Part1: %s, Part2: %s, Part3: %s \n", lfn_entry->FNPart1, lfn_entry->FNPart2, lfn_entry->FNPart3);
+	lfn_entry->Attr = 0xF; // Specifying it is a long name entry (Gets over written by setting null)
+	//printf("LFN test2 %d %x\n", lfn_entry->Attr, lfn_entry->Attr);
+	
+	printf("Generate Long Filename Entry -- Order: %d Part1: %s, Part2: %s, Part3: %s Attr: %d %x \n", order, lfn_entry->FNPart1, lfn_entry->FNPart2, lfn_entry->FNPart3, lfn_entry->Attr);
 	
 	free(filename);
 	
@@ -420,18 +428,18 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	/* Read it */
 	fat->dev->read_blocks(fat->dev, loc[0], 1, sector); 
 	
-	//printf("Sector BEFORE: %s\n", sector);
-	
 	/* Memcpy */
 	if(attr == 0x0F) // Long file entry
 	{
-		printf("Writing LFN entry: Order %d\n",lfn_entry->Order);
+		printf("Writing LFN entry: Order %d\n", lfn_entry->Order);
 		memcpy(sector + loc[1] + ORDER, &(lfn_entry->Order), 1);
 		memcpy(sector + loc[1] + FNPART1, lfn_entry->FNPart1, 10);
 		memcpy(sector + loc[1] + ATTRIBUTE, &(lfn_entry->Attr), 1);
 		memcpy(sector + loc[1] + CHECKSUM, &(lfn_entry->Checksum), 1);
 		memcpy(sector + loc[1] + FNPART2, lfn_entry->FNPart2, 12);
 		memcpy(sector + loc[1] + FNPART3, lfn_entry->FNPart3, 4);
+		
+		printf("Just saved:\n Order: %d FNPart1: %s Attr: %x Checksum: %x FNPart2: %s FNPart3: %s\n", lfn_entry->Order, lfn_entry->FNPart1, lfn_entry->Attr, lfn_entry->Checksum, lfn_entry->FNPart2, lfn_entry->FNPart3);
 	}
 	else             // File/folder entry
 	{
@@ -444,8 +452,6 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 		
 		printf("Just saved:\n Name: %s Extension: %s Attr: %x Cluster: %d Filesize: %d\n", f_entry->FileName, f_entry->Ext, f_entry->Attr, f_entry->FstClusLO, f_entry->FileSize);
 	}
-	
-	//printf("Sector After: %s\n", sector);
 	
 	/* Write it back */
 	fat->dev->write_blocks(fat->dev, loc[0], 1, sector);

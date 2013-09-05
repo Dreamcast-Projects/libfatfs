@@ -43,7 +43,6 @@ void write_fat_table(fatfs_t *fat, unsigned char *table)
     memset(temp, 0, 512*sizeof(unsigned char));
     
     for(i = 0; i < fat->boot_sector.table_size_16; i++) {
-        //memcpy((*table) + 512*i, temp, 512);
         memcpy(temp, table + 512*i, 512);
         fat->dev->write_blocks(fat->dev, fat->file_alloc_tab_sec_loc + i, 1, temp);
     }
