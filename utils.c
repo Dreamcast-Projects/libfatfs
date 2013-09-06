@@ -1,5 +1,5 @@
 
-
+#include <time.h>
 #include <errno.h>
 #include <ctype.h>
 #include <stdio.h>
@@ -341,25 +341,32 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 
 fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum, unsigned char order)
 {
+	char fill[2];
 	char *filename = malloc(13); // 
 	fat_lfn_entry_t *lfn_entry = malloc(sizeof(fat_lfn_entry_t));
 	
 	strncpy(filename,fn, 13);
 	
-	while(strlen(filename) < 13)  // Pad with spaces if need be
-		strcat(filename, " "); 
+	sprintf(fill, "%c", 0xFF);
+	
+	while(strlen(filename) < 13)  // Pad with 0xFF if need be (means we are on the last entry)
+	{
+		strcat(filename, fill[0]);
+	}
 
 	lfn_entry->Order = order;
 	lfn_entry->Checksum = checksum;
 	lfn_entry->Cluster = 0;
-	//strncpy(lfn_entry->FNPart1, filename, 5); // Copy First 5
+	
+	/* Part One */
 	lfn_entry->FNPart1[0] = filename[0];
 	lfn_entry->FNPart1[1] = filename[1];
 	lfn_entry->FNPart1[2] = filename[2];
 	lfn_entry->FNPart1[3] = filename[3];
 	lfn_entry->FNPart1[4] = filename[4];
 	lfn_entry->FNPart1[5] = '\0';
-	//strncpy(lfn_entry->FNPart2, filename+5, 6); // Next 6
+	
+	/* Part Two */
 	lfn_entry->FNPart2[0] = filename[5];
 	lfn_entry->FNPart2[1] = filename[6];
 	lfn_entry->FNPart2[2] = filename[7];
@@ -367,13 +374,13 @@ fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum,
 	lfn_entry->FNPart2[4] = filename[9];
 	lfn_entry->FNPart2[5] = filename[10];
 	lfn_entry->FNPart2[6] = '\0';
-	//strncpy(lfn_entry->FNPart3, filename+11, 2); // Last 2
+	
+	/* Part 3 */
 	lfn_entry->FNPart3[0] = filename[11];
 	lfn_entry->FNPart3[1] = filename[12];
 	lfn_entry->FNPart3[2] = '\0';
 	
 	lfn_entry->Attr = 0xF; // Specifying it is a long name entry (Gets over written by setting null)
-	//printf("LFN test2 %d %x\n", lfn_entry->Attr, lfn_entry->Attr);
 	
 	printf("Generate Long Filename Entry -- Order: %d Part1: %s, Part2: %s, Part3: %s Attr: %d %x \n", order, lfn_entry->FNPart1, lfn_entry->FNPart2, lfn_entry->FNPart3, lfn_entry->Attr);
 	
@@ -412,6 +419,16 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	fat_lfn_entry_t *lfn_entry;
 	fat_dir_entry_t *f_entry;
 	uint8_t sector[512]; // Each sector is 512 bytes long
+	time_t rawtime;
+	short int tme = 0;
+	short int date = 0;
+	struct tm * timeinfo;
+	
+	printf("Trying to grab time itself\n");
+
+	time (&rawtime);
+	timeinfo = localtime (&rawtime);
+	printf ("Current local time and date: %s\n", asctime(timeinfo));
 	
 	if(attr == 0x0F)
 	{
@@ -428,6 +445,8 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	/* Read it */
 	fat->dev->read_blocks(fat->dev, loc[0], 1, sector); 
 	
+	printf("Before copying\n");
+	
 	/* Memcpy */
 	if(attr == 0x0F) // Long file entry
 	{
@@ -443,15 +462,28 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	}
 	else             // File/folder entry
 	{
-		//printf("Writing SFN entry: Name %s Ext: %s\n", f_entry->FileName, f_entry->Ext);
+		//printf("Time: %d:%d:%d \n",timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec/2);
+		//printf("Date: %d:%d:%d \n",timeinfo->tm_year+1900, timeinfo->tm_mon+1, timeinfo->tm_mday);
+		tme = generate_time(timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec/2);
+		date = generate_date(1900 + timeinfo->tm_year, timeinfo->tm_mon+1, timeinfo->tm_mday);
+		
 		memcpy(sector + loc[1] + FILENAME, f_entry->FileName, 8);
 		memcpy(sector + loc[1] + EXTENSION, f_entry->Ext, 3);
 		memcpy(sector + loc[1] + ATTRIBUTE, &(f_entry->Attr), 1);
+		
+		memcpy(sector + loc[1] + CREATIONTIME, &(tme), 2);
+		memcpy(sector + loc[1] + CREATIONDATE, &(date), 2);
+		memcpy(sector + loc[1] + LASTACCESSDATE, &(date), 2);
+		memcpy(sector + loc[1] + LASTWRITETIME, &(tme), 2);
+		memcpy(sector + loc[1] + LASTWRITEDATE, &(date), 2);
+		
 		memcpy(sector + loc[1] + STARTCLUSTER, &(f_entry->FstClusLO), 2);
 		memcpy(sector + loc[1] + FILESIZE, &(f_entry->FileSize), 4);
 		
 		printf("Just saved:\n Name: %s Extension: %s Attr: %x Cluster: %d Filesize: %d\n", f_entry->FileName, f_entry->Ext, f_entry->Attr, f_entry->FstClusLO, f_entry->FileSize);
 	}
+	
+	printf("After copying\n");
 	
 	/* Write it back */
 	fat->dev->write_blocks(fat->dev, loc[0], 1, sector);
@@ -597,4 +629,39 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	}
 	
 	return locations;
+}
+
+short int generate_time(int hour, int minutes, int seconds)
+{
+/*
+ <------- 0x17 --------> <------- 0x16 -------->
+15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
+h  h  h  h  h  m  m  m  m  m  m  x  x  x  x  x
+*/
+	char h = hour;
+	char m = minutes;
+	char s = seconds;
+	short int time = 0;
+	
+	time = (((h & 0x1F) << 11) | ((m & 0x3F) << 5) | (s & 0x1F));
+	
+	return time;
+}
+
+short int generate_date(int year, int month, int day)
+{
+/*
+<------- 0x19 --------> <------- 0x18 -------->
+15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
+y  y  y  y  y  y  y  m  m  m  m  d  d  d  d  d
+*/
+
+	char y = year - 1980;
+	char m = month;
+	char d = day;
+	short int date = 0;
+	
+	date = (((y & 0x7F) << 9) | ((m & 0x0F) << 5) | (d & 0x1F));
+	
+	return date;
 }

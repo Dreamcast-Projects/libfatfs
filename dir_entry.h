@@ -17,10 +17,15 @@ typedef struct fatfs fatfs_t;
 #define ARCHIVE      0x20
 #define LONGFILENAME 0x0F
 
-/* Important offsets */
+/* Shortname offsets */
 #define FILENAME  0x00
 #define EXTENSION 0x08
 #define ATTRIBUTE 0x0B
+#define CREATIONTIME 0x0E
+#define CREATIONDATE 0x10
+#define LASTACCESSDATE 0x12
+#define LASTWRITETIME 0x16
+#define LASTWRITEDATE 0x18
 #define STARTCLUSTER 0x1A
 #define FILESIZE  0x1C
 
@@ -79,9 +84,9 @@ typedef struct fat_dir_entry
                                    xxxxx - Indicates the binary number of two-second periods (0-29), representing seconds 0 to 58.
                                 */								   
     unsigned short CrtDate;     /* Taken from http://www.tavi.co.uk/phobos/fat.html#file_date
-	                               <------- 0x19 --------> <------- 0x18 -------->
-                                        15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
-                                        y  y  y  y  y  y  y  m  m  m  m  d  d  d  d  d
+							   <------- 0x19 --------> <------- 0x18 -------->
+									15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
+									y  y  y  y  y  y  y  m  m  m  m  d  d  d  d  d
 
                                         yyyyyyy - Indicates the binary year offset from 1980 (0-119), representing the years 1980 to 2099
                                         mmmm - Indicates the binary month number (1-12)

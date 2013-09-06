@@ -69,7 +69,7 @@ cluster_node_t * GetClusterList(const unsigned char *table, int start_cluster)
 	start->Next = NULL;
 	memcpy(&cluster_num, &table[start_cluster*2], 2);
 	
-	printf("Starting cluster: %x\n", start_cluster);
+	//printf("Starting cluster: %x\n", start_cluster);
 	
 	while(cluster_num < 0xFFF8 ) {
 		temp->Next = (cluster_node_t *) malloc(sizeof(cluster_node_t));
@@ -488,8 +488,18 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 {
 	//char buffer[20];
 	uint8_t sector[512]; // Each sector is 512 bytes long
+	
+	time_t rawtime;
+	short int tme = 0;
+	short int date = 0;
+	struct tm * timeinfo;
 
-	//memset(buffer, 0, sizeof(buffer));
+	time (&rawtime);
+	timeinfo = localtime (&rawtime);
+	
+	tme = generate_time(timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec/2);
+	date = generate_date(1900 + timeinfo->tm_year, timeinfo->tm_mon+1, timeinfo->tm_mday);
+	
 	memset(sector, 0, sizeof(sector));
 
 	/* Read fat sector */
@@ -498,6 +508,9 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	/* Edit Entry */
         
 	memcpy(sector + file->Location[1] + FILESIZE, &(file->FileSize), 4); // Edit Filesize
+	memcpy(sector + file->Location[1] + LASTACCESSDATE, &(date), 2);
+	memcpy(sector + file->Location[1] + LASTWRITETIME, &(tme), 2);
+	memcpy(sector + file->Location[1] + LASTWRITEDATE, &(date), 2);
 
 	/* Write it back */
 	fat->dev->write_blocks(fat->dev, file->Location[0], 1, sector);
@@ -787,8 +800,8 @@ int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 	entry.FileName[8] = '\0';
 	strncpy(entry.Ext, shortname+9, 3 ); // Skip filename and '.' 
 	entry.Ext[3] = '\0';
-        entry.Attr = newfile->Attr;
-        entry.FileSize = 0;   // For both new files and new folders
+	entry.Attr = newfile->Attr;
+	entry.FileSize = 0;   // For both new files and new folders
 	entry.FstClusLO = newfile->Data_Clusters->Cluster_Num;
 	
 	// Write it (after long file name entries)
