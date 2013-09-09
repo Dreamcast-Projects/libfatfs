@@ -51,7 +51,7 @@ void write_fat_table(fatfs_t *fat, unsigned char *table)
 }
 
 fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
-    	int i;
+    	unsigned int i;
 	char c;
 	char *fmp = (char *)malloc(strlen(mp)+1);
     	fatfs_t *rv;
@@ -65,7 +65,7 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	while (mp[i])
     	{
        		c = mp[i];
-      	 	fmp[i] = (char)toupper(c);
+      	 	fmp[i] = toupper((int)c);
        		i++;
     	}
 
@@ -112,8 +112,8 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	printf("Total number of clusters: %d\n\n\n", rv->total_clusters_num);
 	#endif
 	
-	rv->root = (node_entry_t *)malloc(sizeof(node_entry_t));
-	rv->root->Name = remove_all_chars(fmp, '/');          /*  */
+	rv->root = malloc(sizeof(node_entry_t));
+	rv->root->Name = (unsigned char *)remove_all_chars(fmp, '/');          /*  */
 	rv->root->Attr = DIRECTORY;     /* Root directory is obviously a directory */
 	rv->root->Data_Clusters = NULL; /* Root directory has no data clusters associated with it */
 	rv->root->Parent = NULL;        /* Should always be NULL for root*/
