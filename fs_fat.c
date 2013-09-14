@@ -69,11 +69,16 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
         return NULL;
     }
     else if(found == NULL && (mode & O_CREAT)) {
-         found = create_file(mnt->fs, mnt->fs->root, ufn);
+         found = create_entry(mnt->fs, mnt->fs->root, ufn, ARCHIVE);
          
          if(found == NULL)
              return NULL;
     }
+	else if(found != NULL && (found->Attr & READ_ONLY) && ((mode & O_WRONLY) || (mode & O_RDWR))) 
+	{
+		errno = EROFS;
+		return NULL;
+	}
     
     /* Set filesize to 0 if we set mode to O_TRUNC */
     if((mode & O_TRUNC) && ((mode & O_WRONLY) || (mode & O_RDWR)))
@@ -138,7 +143,7 @@ static void fs_fat_close(void * h) {
         // Change time
         if(fh[fd].mode & O_WRONLY || fh[fd].mode & O_RDWR)
 		{
-			printf("Updating File Entry\n");
+			//printf("Updating File Entry\n");
             update_fat_entry(fh[fd].mnt->fs, fh[fd].node);
 		}
 		
@@ -252,7 +257,7 @@ static ssize_t fs_fat_write(void *h, void *buf, size_t cnt)
     }
 
     fh[fd].ptr += cnt;
-    fh[fd].node->FileSize = (fh[fd].ptr > fh[fd].node->FileSize) ? fh[fd].ptr : fh[fd].node->FileSize; // Increase the file size if need be
+    fh[fd].node->FileSize = (fh[fd].ptr > fh[fd].node->FileSize) ? fh[fd].ptr : fh[fd].node->FileSize; // Increase the file size if need be(which ever is bigger)
 
     // Write it to the FAT
     //update_fat_entry(fs, fh[fd].node);
@@ -390,6 +395,69 @@ static dirent_t *fs_fat_readdir(void *h) {
     return &fh[fd].dirent;
 }
 
+static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
+    /*rd_file_t   * f;
+    int     rv = -1;
+
+    mutex_lock(&rd_mutex);
+
+    /* Find the file 
+    f = ramdisk_find_path(rootdir, fn, 0);
+
+    if(f) {
+        /* Make sure it's not in use 
+        if(f->usage == 0) {
+            /* Free its data 
+            free(f->name);
+            free(f->data);
+
+            /* Remove it from the parent list 
+            LIST_REMOVE(f, dirlist);
+
+            /* Free the entry itself 
+            free(f);
+            rv = 0;
+        }
+    }
+
+    mutex_unlock(&rd_mutex);
+    return rv;*/
+	return 0;
+}
+
+static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn, int mode)
+{
+	file_t fd;
+    char *ufn = (char *)malloc(strlen(fn)+4); // 4:  3 for "/sd" and 1 for null character
+    fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
+    node_entry_t *found = NULL;
+	
+	printf("In mkdir function!!!! Folder trying to create: %s \n", fn);
+
+    memset(ufn, 0, strlen(fn)+4);    // 4:  3 for "/sd" and 1 for null character
+
+    strcat(ufn, "/sd");
+    strcat(ufn, fn);
+
+    /* Find the object in question */
+    found = fat_search_by_path(mnt->fs->root, ufn);
+
+    /* Handle a few errors */
+    if(found != NULL) {
+        errno = EEXIST; // The named file exists. 
+        return -1;
+    }
+	
+	found = create_entry(mnt->fs, mnt->fs->root, ufn, DIRECTORY);
+         
+	if(found == NULL)
+		return -1;
+
+	// Update subdirectory to reflect access time and modified time.
+
+	return 0;
+}
+
 static int fs_fat_stat(vfs_handler_t *vfs, const char *fn, stat_t *rv) {
     /*
     fs_ext2_fs_t *fs = (fs_ext2_fs_t *)vfs->privdata;
@@ -489,6 +557,8 @@ static int fs_fat_fcntl(void *h, int cmd, va_list ap) {
     return rv;
 }
 
+
+
 /* This is a template that will be used for each mount */
 static vfs_handler_t vh = {
     /* Name Handler */
@@ -517,7 +587,7 @@ static vfs_handler_t vh = {
     NULL,                      /* mmap */
     NULL,                      /* complete */
     fs_fat_stat,               /* stat */
-    NULL,//fs_fat_mkdir,                /* mkdir */
+    fs_fat_mkdir,              /* mkdir */
     NULL, //fs_fat_rmdir,               /* rmdir */
     fs_fat_fcntl,              /* fcntl */
     NULL                       /* poll */

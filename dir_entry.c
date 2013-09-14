@@ -506,8 +506,7 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	fat->dev->read_blocks(fat->dev, file->Location[0], 1, sector);
 
 	/* Edit Entry */
-        
-	memcpy(sector + file->Location[1] + FILESIZE, &(file->FileSize), 4); // Edit Filesize
+	memcpy(sector + file->Location[1] + FILESIZE, &(file->FileSize), 4); 
 	memcpy(sector + file->Location[1] + LASTACCESSDATE, &(date), 2);
 	memcpy(sector + file->Location[1] + LASTWRITETIME, &(tme), 2);
 	memcpy(sector + file->Location[1] + LASTWRITEDATE, &(date), 2);
@@ -608,7 +607,7 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
     return NULL;
 }
 
-node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
+node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned char attr)
 {
     int i = 0;
     char c;
@@ -631,7 +630,7 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
        i++;
     }
 
-    pch = strtok(ufn,"/");  //pch is equal to sd
+    pch = strtok(ufn,"/");  // Grab Root
 	
     if(strcmp(pch, target->Name) == 0) {
         pch = strtok (NULL, "/"); 
@@ -643,8 +642,14 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
         while(pch != NULL) {
             if(target = isChildof(child, pch)) 
             {
+				if(target->Attr & READ_ONLY) // Check and make sure directory is not read only.
+				{
+					errno = EROFS;
+					return NULL;
+				}
+				
                 pch = strtok (NULL, "/");
-                //printf("Next: %s\n", pch);
+              
                 if(pch != NULL) {
                     child = target->Children;
                 }
@@ -653,7 +658,7 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
             {
                 filename = pch; // We possibly have the filename
                 
-                printf("Possible Filename: %s\n", filename);
+                printf("Possible Name: %s\n", filename);
                 
                 // Return NULL if we encounter a directory that doesn't exist
                 if(pch = strtok (NULL, "/")) { // See if there is more to parse through
@@ -668,36 +673,33 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
                 }
                 
                 // Directory trees file/folder names are always capitalized 
-                // Make sure we get the original case of the filename to save to SD
+                // Make sure we get the original case of the file/folder name to save to SD
                 entry_filename = (char *)malloc(strlen(filename) + 1);
                 memset(entry_filename, 0, strlen(filename) + 1);
                 strncpy(entry_filename, fn + (strlen(fn) - strlen(filename)), strlen(filename));
                 entry_filename[strlen(filename)] = '\0';
                 
-                printf("Entry Filename: %s\n", entry_filename);
+                printf("Entry Name: %s\n", entry_filename);
            
-                // Create file
+                // Create file/folder
                 newfile = (node_entry_t *) malloc(sizeof(node_entry_t));
                 newfile->Name = filename;
-                newfile->Attr = ARCHIVE;
+                newfile->Attr = attr;
                 newfile->FileSize = 0;
                 newfile->Data_Clusters = NULL; 
                 newfile->Parent = child;
-                newfile->Children = NULL;  // Files cant have children
+                newfile->Children = NULL;  
                 newfile->Next = NULL;      // Adding to end of Parent(var child) list of children
                 
-                if(create_entry(fat, entry_filename, newfile) == -1)
+                if(generate_and_write_entry(fat, entry_filename, newfile) == -1)
                 {
-					printf("Didnt Create file\n");
+					printf("Didnt Create file/folder\n");
                     delete_tree_entry(newfile);  //This doesn't take care of removing clusters from SD card
                     errno = EDQUOT;
                     return NULL;  
                 }
                 
-                // Make sure locations was changed.
-                
                 // Created file on SD successfully. Now add this new file to the directory tree
-                
                 temp = child->Children;
                 
                 // Folder has no children. Set Children to be this new file
@@ -725,7 +727,7 @@ node_entry_t *create_file(fatfs_t *fat, node_entry_t * root, char *fn)
     return NULL;
 }
 
-int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
+int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 {
 	int i;
 	int j;
@@ -737,21 +739,21 @@ int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 	char *shortname;
 	unsigned char checksum;
 
-        fat_dir_entry_t entry;
+    fat_dir_entry_t entry;
 	fat_lfn_entry_t *lfn_entry;
 	fat_lfn_entry_t *lfn_entry_list[20];  // Can have a maximum of 20 long file name entries
 	
 	for(i = 0; i < 20; i++)
 		lfn_entry_list[i] = NULL;
     
-        shortname = generate_short_filename(newfile->Parent, entry_name, newfile->Attr, &longfilename);
+    shortname = generate_short_filename(newfile->Parent, entry_name, newfile->Attr, &longfilename);
 	checksum = generate_checksum(shortname);
 	
 	printf("Shortfile Name: %s\n", shortname);
     
 	// Make lfn entries
 	if(longfilename)
-        {
+    {
 		i = 0;
 		
 		while(offset < strlen(entry_name))
@@ -790,12 +792,12 @@ int create_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 		}
 		
 		printf("Finished writing lfn\n");
-        }
+    }
 	
 	/* Allocate a cluster */
 	newfile->Data_Clusters = allocate_cluster(fat, NULL);
 	
-         // Make regular entry and write it to SD FAT
+	// Make regular entry and write it to SD FAT
 	strncpy(entry.FileName, shortname, 8);
 	entry.FileName[8] = '\0';
 	strncpy(entry.Ext, shortname+9, 3 ); // Skip filename and '.' 

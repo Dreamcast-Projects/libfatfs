@@ -146,8 +146,8 @@ char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char att
 	char *integer_string = malloc(7); 
 	
 	char *fn_temp;
-	char *filename = malloc(11); // File length max is 8 chars
-	char *ext = malloc(4);      // Extension length max is 3 chars
+	char *filename = malloc(sizeof(fn)+1); 
+	char *ext = malloc(4);      
 	char *fn_final;
 	
 	// 1. Remove all spaces. For example "My File" becomes "MyFile".
@@ -165,8 +165,8 @@ char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char att
 
 	temp1 = malloc(strlen(fn)+1);
 	
-	strncpy(filename, strtok(copy, "."), 10); // Copy Filename
-	filename[10] = '\0';
+	strncpy(filename, strtok(copy, "."), strlen(fn)); // Copy Filename
+	filename[strlen(fn)] = '\0';
 	
 	strncpy(ext, strtok(NULL, "."), 3);      // Copy Extension
 	ext[3] = '\0';
@@ -179,8 +179,8 @@ char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char att
 		strcat(temp1, filename);
 		strcat(temp1, ext);
 		
-		strncpy(filename, temp1, 10); // Copy Filename
-		filename[10] = '\0';
+		strncpy(filename, temp1, strlen(fn)); // Copy Filename
+		filename[strlen(fn)] = '\0';
 		
 		strncpy(ext, temp2, 3);
 		ext[3] = '\0';
@@ -285,7 +285,7 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 	{
 		if(diff > 99999)
 		{
-			printf("Too many entries(Short Entry Name) with the same name(beginning) :p.\n");
+			printf("Too many entries(Short Entry Name) with the same name \n");
 			return NULL;
 		}
 		
@@ -424,11 +424,11 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	short int date = 0;
 	struct tm * timeinfo;
 	
-	printf("Trying to grab time itself\n");
+	//printf("Trying to grab time itself\n");
 
 	time (&rawtime);
 	timeinfo = localtime (&rawtime);
-	printf ("Current local time and date: %s\n", asctime(timeinfo));
+	//printf ("Current local time and date: %s\n", asctime(timeinfo));
 	
 	if(attr == 0x0F)
 	{
@@ -445,12 +445,12 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	/* Read it */
 	fat->dev->read_blocks(fat->dev, loc[0], 1, sector); 
 	
-	printf("Before copying\n");
+	//printf("Before copying\n");
 	
 	/* Memcpy */
 	if(attr == 0x0F) // Long file entry
 	{
-		printf("Writing LFN entry: Order %d\n", lfn_entry->Order);
+		//printf("Writing LFN entry: Order %d\n", lfn_entry->Order);
 		memcpy(sector + loc[1] + ORDER, &(lfn_entry->Order), 1);
 		memcpy(sector + loc[1] + FNPART1, lfn_entry->FNPart1, 10);
 		memcpy(sector + loc[1] + ATTRIBUTE, &(lfn_entry->Attr), 1);
@@ -462,8 +462,6 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	}
 	else             // File/folder entry
 	{
-		//printf("Time: %d:%d:%d \n",timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec/2);
-		//printf("Date: %d:%d:%d \n",timeinfo->tm_year+1900, timeinfo->tm_mon+1, timeinfo->tm_mday);
 		tme = generate_time(timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec/2);
 		date = generate_date(1900 + timeinfo->tm_year, timeinfo->tm_mon+1, timeinfo->tm_mday);
 		
@@ -483,7 +481,7 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 		printf("Just saved:\n Name: %s Extension: %s Attr: %x Cluster: %d Filesize: %d\n", f_entry->FileName, f_entry->Ext, f_entry->Attr, f_entry->FstClusLO, f_entry->FileSize);
 	}
 	
-	printf("After copying\n");
+	//printf("After copying\n");
 	
 	/* Write it back */
 	fat->dev->write_blocks(fat->dev, loc[0], 1, sector);
