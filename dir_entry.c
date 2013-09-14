@@ -50,7 +50,7 @@ char * ExtractLongName(fat_lfn_entry_t *lfn)
 	while (buf[i])
     {
        c = buf[i];
-       buf[i] = (char)toupper(c);
+       buf[i] = toupper((int)c);
        i++;
     }
 	
@@ -88,10 +88,10 @@ node_entry_t *isChildof(node_entry_t *parent, char *child_name) {
 	
 	while(child != NULL) 
 	{
-	    if(strcmp(child->Name, child_name) == 0) {
+	    if(strcmp((const char *)child->Name, child_name) == 0) {
 		    return child;
 		}
-		else if(strcmp(child->ShortName, child_name) == 0)
+		else if(strcmp((const char *)child->ShortName, child_name) == 0)
 		{
 			return child;
 		}
@@ -116,13 +116,13 @@ node_entry_t *fat_search_by_path(node_entry_t *root, char *fn)
     while (fn[i])
     {
        c = fn[i];
-       ufn[i] = (char)toupper(c);
+       ufn[i] = toupper((int)c);
        i++;
     }
 
     pch = strtok(ufn,"/");
 	
-    if(strcmp(pch, target->Name) == 0) {
+    if(strcmp(pch, (const char*)target->Name) == 0) {
             pch = strtok (NULL, "/");
 
             if(pch != NULL) {
@@ -194,7 +194,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 		
 			if(lfnbuf1[0] == '\0') 
 			{
-				strcpy(lfnbuf1, ExtractLongName(&lfn));
+				strcpy((char *)lfnbuf1, ExtractLongName(&lfn));
 				if(lfnbuf2[0] != '\0') {
 				    strcat((char *)lfnbuf1, (const char *)lfnbuf2);
 					memset(lfnbuf2, 0, sizeof(lfnbuf2));
@@ -202,9 +202,9 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 			}
 			else if(lfnbuf2[0] == '\0')
 			{
-				strcpy(lfnbuf2, ExtractLongName(&lfn));
+				strcpy((char *)lfnbuf2, ExtractLongName(&lfn));
 				if(lfnbuf1[0] != '\0') {
-				    strcat(lfnbuf2, (const char *)lfnbuf1);
+				    strcat((char *)lfnbuf2, (const char *)lfnbuf1);
 					memset(lfnbuf1, 0, sizeof(lfnbuf1));
 				}
 			}
@@ -230,43 +230,43 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 			// Deal with no long name
 			if(lfnbuf1[0] == '\0' && lfnbuf2[0] == '\0')
 			{
-			    //printf("NO LONGNAME\n");
-			    strcat(lfnbuf1, (const char *)temp.FileName);
+                                //printf("NO LONGNAME\n");
+                                strcat((char *)lfnbuf1, (const char *)temp.FileName);
 				if(temp.Ext[0] != ' ') { // If we actually have an extension....add it in
 					if(temp.Attr == VOLUME_ID) { // Extension is part of the VOLUME name(node->FileName)
-						strcat(lfnbuf1, temp.Ext);
+						strcat((char *)lfnbuf1, (const char *)temp.Ext);
 					}
 					else {
-						strcat(lfnbuf1, ".");
-						strcat(lfnbuf1, temp.Ext);
+						strcat((char *)lfnbuf1, ".");
+						strcat((char *)lfnbuf1, (const char *)temp.Ext);
 					}
 				}
-				lfnbuf1 = remove_all_chars(lfnbuf1,' '); 
-				new_entry->Name = (char *)malloc(strlen(lfnbuf1));
-				new_entry->ShortName = (char *)malloc(strlen(lfnbuf1));
-				strcpy(new_entry->Name, lfnbuf1);
-				strcpy(new_entry->ShortName, lfnbuf1);  // Added
+				lfnbuf1 = (unsigned char*)remove_all_chars((const char*)lfnbuf1,' '); 
+				new_entry->Name = malloc(strlen((const char *)lfnbuf1));
+				new_entry->ShortName = malloc(strlen((const char *)lfnbuf1));
+				strcpy((char *)new_entry->Name, (const char *)lfnbuf1);
+				strcpy((char *)new_entry->ShortName, (const char *)lfnbuf1);  // Added
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
 				//printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName);
 			}
 			else if(lfnbuf1[0] != '\0')
 			{
 				//printf("LONGNAME :1\n");
-			    strcat(lfnbuf2, (const char *)temp.FileName);
+                                strcat((char *)lfnbuf2, (const char *)temp.FileName);
 				if(temp.Ext[0] != ' ') { // If we actually have an extension....add it in
 					if(temp.Attr == VOLUME_ID) { // Extension is part of the VOLUME name(node->FileName)
-						strcat(lfnbuf2, temp.Ext);
+						strcat((char *)lfnbuf2, (const char *)temp.Ext);
 					}
 					else {
-						strcat(lfnbuf2, ".");
-						strcat(lfnbuf2, temp.Ext);
+						strcat((char *)lfnbuf2, ".");
+						strcat((char *)lfnbuf2, (const char *)temp.Ext);
 					}
 				}
 				
-				new_entry->Name = (char *)malloc(strlen(lfnbuf1));
-				new_entry->ShortName = (char *)malloc(strlen(lfnbuf2));
-				strcpy(new_entry->Name, lfnbuf1);
-				strcpy(new_entry->ShortName, lfnbuf2);  // Added
+				new_entry->Name = (char *)malloc(strlen((const char *)lfnbuf1));
+				new_entry->ShortName = (char *)malloc(strlen((const char *)lfnbuf2));
+				strcpy((char *)new_entry->Name, (const char *)lfnbuf1);
+				strcpy((char *)new_entry->ShortName, (const char *)lfnbuf2);  // Added
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
 				memset(lfnbuf2, 0, sizeof(lfnbuf1));
 				//printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName);
@@ -513,7 +513,23 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 
 	/* Write it back */
 	fat->dev->write_blocks(fat->dev, file->Location[0], 1, sector);
+        
+        if(file->Parent->Parent != NULL) // If this file/folder is in a 
+        {                                // subdirectory[Not the ROOT Directory] update it as well
+            memset(sector, 0, sizeof(sector));
+            
+            /* Read fat sector */
+            fat->dev->read_blocks(fat->dev, file->Parent->Location[0], 1, sector);
+            
+            /* Edit Folder */
+            memcpy(sector + file->Parent->Location[1] + LASTACCESSDATE, &(date), 2);
+            memcpy(sector + file->Parent->Location[1] + LASTWRITETIME, &(tme), 2);
+            memcpy(sector + file->Parent->Location[1] + LASTWRITEDATE, &(date), 2);
 
+            /* Write it back */
+            fat->dev->write_blocks(fat->dev, file->Parent->Location[0], 1, sector);
+        }
+        
 	return;
 }
 
