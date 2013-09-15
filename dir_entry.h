@@ -65,12 +65,12 @@ typedef struct fat_dir_entry
     unsigned char Attr;         /* Provides information about the file and its permissions. Hex numbers are bit offsets in this variable. 0x01 = 00000001
 	                                                                                        0x01(0000 0001) - Read-Only
 	                                                                                        0x02(0000 0002) - Hidden File
-                                                                                                0x04(0000 0100) - System File 
-                                                                                                0x08(0000 1000) - Contains the disk's volume label, instead of describing a file
-                                                                                                0x10(0001 0000) - This is a subdirectory
-                                                                                                0x20(0010 0000) - Archive flag. Set when file is modified
-                                                                                                0x40(0100 0000) - Not used. Must be zero
-                                                                                                0x80(1000 0000) - Not used. Must be zero
+																							0x04(0000 0100) - System File 
+																							0x08(0000 1000) - Contains the disk's volume label, instead of describing a file
+																							0x10(0001 0000) - This is a subdirectory
+																							0x20(0010 0000) - Archive flag. Set when file is modified
+																							0x40(0100 0000) - Not used. Must be zero
+																							0x80(1000 0000) - Not used. Must be zero
 */
     unsigned char Res;          /* Reserved */
     unsigned char CrtTimeTenth; /* Creation time in tenths of a second.  */
@@ -126,9 +126,10 @@ typedef struct node_entry {
 
 /* Prototypes */
 int generate_and_write_entry(fatfs_t *fat, char *filename, node_entry_t *newfile);
-// int delete entry(fatfs_t *fat, node_entry_t *file);
+void delete_entry(fatfs_t *fat, node_entry_t *file);
 node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned char attr);
 cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster);
+void delete_cluster_list(fatfs_t *fat, node_entry_t *file);
 void delete_tree_entry(node_entry_t * node);
 void delete_directory_tree(node_entry_t * node);
 void update_fat_entry(fatfs_t *fat, node_entry_t *file);

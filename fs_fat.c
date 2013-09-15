@@ -84,7 +84,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     if((mode & O_TRUNC) && ((mode & O_WRONLY) || (mode & O_RDWR)))
     {
         found->FileSize = 0;
-        // Also change FAT table. I.E. delete all clusters associated with this file.
+        delete_cluster_list(mnt->fs, found);
     }
 
     /* Find a free file handle */
@@ -396,38 +396,60 @@ static dirent_t *fs_fat_readdir(void *h) {
 }
 
 static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
-    /*rd_file_t   * f;
-    int     rv = -1;
 
-    mutex_lock(&rd_mutex);
+	int i;
+	node_entry_t *f = NULL;
+	fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
 
-    /* Find the file 
-    f = ramdisk_find_path(rootdir, fn, 0);
+    mutex_lock(&fat_mutex);
+
+    /* Find the file */
+    f = fat_search_by_path(mnt->fs->root, fn);
 
     if(f) {
-        /* Make sure it's not in use 
-        if(f->usage == 0) {
-            /* Free its data 
-            free(f->name);
-            free(f->data);
+        /* Make sure it's not in use */
+		for(i=0;i<MAX_FAT_FILES; i++)
+		{
+			if(fh[i].used == 1 && fh[i].node == f)
+			{
+				errno = EBUSY;
+				return -1;
+			}
+		}
+		
+		/* Make sure it isnt a directory(files only) */
+		if(f->Attr & DIRECTORY)
+		{
+			errno = EISDIR;
+			return -1;
+		}
+		
+		/* Make sure its not Read Only */
+		if(f->Attr & READ_ONLY)
+		{
+			errno = EROFS;
+			return -1;
+		}
+       
+		/* Remove it from SD card */
+		delete_entry(mnt->fs, f);
 
-            /* Remove it from the parent list 
-            LIST_REMOVE(f, dirlist);
-
-            /* Free the entry itself 
-            free(f);
-            rv = 0;
-        }
+		/* Remove it from directory tree */
+		delete_tree_entry(f);
     }
+	else // Not found
+	{
+		errno = ENOENT;
+		return -1;
+	}
 
-    mutex_unlock(&rd_mutex);
-    return rv;*/
+    mutex_unlock(&fat_mutex);
+    
 	return 0;
 }
 
 static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn, int mode)
 {
-	file_t fd;
     char *ufn = (char *)malloc(strlen(fn)+4); // 4:  3 for "/sd" and 1 for null character
     fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
     node_entry_t *found = NULL;
@@ -453,9 +475,71 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn, int mode)
 	if(found == NULL)
 		return -1;
 
-	// Update subdirectory to reflect access time and modified time.
+	if(found->Parent->Parent != NULL) // Update parent directories(access[change] time/date)
+		update_fat_entry(mnt->fs, found->Parent);
 
 	return 0;
+}
+
+static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
+{
+	int i;
+	node_entry_t *f = NULL;
+	fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
+
+    mutex_lock(&fat_mutex);
+
+    /* Find the folder */
+    f = fat_search_by_path(mnt->fs->root, fn);
+
+    if(f) {
+        /* Make sure it's not in use */
+		for(i=0;i<MAX_FAT_FILES; i++)
+		{
+			if(fh[i].used == 1 && fh[i].node == f)
+			{
+				errno = EBUSY;
+				return -1;
+			}
+		}
+		
+		/* Make sure it isnt a file */
+		if(f->Attr & ARCHIVE)
+		{
+			errno = ENOTDIR;
+			return -1;
+		}
+		
+		/* Make sure its not Read Only */
+		if(f->Attr & READ_ONLY)
+		{
+			errno = EROFS;
+			return -1;
+		}
+		
+		/* Make sure this folder has no contents(children) */
+       if(f->Children != NULL)
+	   {
+			errno = ENOTEMPTY;
+			return -1;
+	   }
+	   
+		/* Remove it from SD card */
+		delete_entry(mnt->fs, f);
+
+		/* Remove it from directory tree */
+		delete_tree_entry(f);
+    }
+	else // Not found
+	{
+		errno = ENOENT;
+		return -1;
+	}
+
+    mutex_unlock(&fat_mutex);
+    
+	return 0;
+
 }
 
 static int fs_fat_stat(vfs_handler_t *vfs, const char *fn, stat_t *rv) {
@@ -583,12 +667,12 @@ static vfs_handler_t vh = {
     fs_fat_readdir,            /* readdir */
     NULL,                      /* ioctl */
     NULL,                      /* rename */
-    NULL, //fs_fat_unlink      /* unlink(delete a file) */
+    fs_fat_unlink,             /* unlink(delete a file) */
     NULL,                      /* mmap */
     NULL,                      /* complete */
     fs_fat_stat,               /* stat */
     fs_fat_mkdir,              /* mkdir */
-    NULL, //fs_fat_rmdir,               /* rmdir */
+    fs_fat_rmdir,              /* rmdir */
     fs_fat_fcntl,              /* fcntl */
     NULL                       /* poll */
 };

@@ -514,29 +514,50 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	/* Write it back */
 	fat->dev->write_blocks(fat->dev, file->Location[0], 1, sector);
         
-        if(file->Parent->Parent != NULL) // If this file/folder is in a 
-        {                                // subdirectory[Not the ROOT Directory] update it as well
-            memset(sector, 0, sizeof(sector));
-            
-            /* Read fat sector */
-            fat->dev->read_blocks(fat->dev, file->Parent->Location[0], 1, sector);
-            
-            /* Edit Folder */
-            memcpy(sector + file->Parent->Location[1] + LASTACCESSDATE, &(date), 2);
-            memcpy(sector + file->Parent->Location[1] + LASTWRITETIME, &(tme), 2);
-            memcpy(sector + file->Parent->Location[1] + LASTWRITEDATE, &(date), 2);
+	if(file->Parent->Parent != NULL) // If this file/folder is in a 
+	{                                // subdirectory[Not the ROOT Directory] update it as well (recursively)
+		update_fat_entry(fat, file->Parent);
+		
+		/*
+		memset(sector, 0, sizeof(sector));
+		
+		/* Read fat sector 
+		fat->dev->read_blocks(fat->dev, file->Parent->Location[0], 1, sector);
+		
+		/* Edit Folder 
+		memcpy(sector + file->Parent->Location[1] + LASTACCESSDATE, &(date), 2);
+		memcpy(sector + file->Parent->Location[1] + LASTWRITETIME, &(tme), 2);
+		memcpy(sector + file->Parent->Location[1] + LASTWRITEDATE, &(date), 2);
 
-            /* Write it back */
-            fat->dev->write_blocks(fat->dev, file->Parent->Location[0], 1, sector);
-        }
+		/* Write it back 
+		fat->dev->write_blocks(fat->dev, file->Parent->Location[0], 1, sector);
+		*/
+	}
         
 	return;
 }
 
 void delete_tree_entry(node_entry_t * node)
 {
+	node_entry_t *child;
     cluster_node_t  *old;
     
+	if(node->Parent->Children == node) // If we are the first child in the list
+	{
+		node->Parent->Children = node->Next;
+	}
+	else // Otherwise...
+	{
+		child = node->Parent->Children;
+		
+		while(child->Next != node)
+		{
+			child = child->Next;
+		}
+		
+		child->Next = node->Next;
+	}
+	
     free(node->Name); // Free the name
     
     // Free the LL Data Clusters
@@ -621,6 +642,24 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
     
     /* Didn't find a free cluster */
     return NULL;
+}
+
+void delete_cluster_list(fatfs_t *fat, node_entry_t *f)
+{
+	const short int clear = 0;
+	cluster_node_t *clust = f->Data_Clusters;
+    unsigned char *fat_table;
+    
+    read_fat_table(fat, &fat_table); 
+	
+	while(clust != NULL)
+	{
+		memcpy(&fat_table[clust->Cluster_Num*2], &(clear), 2);
+		printf("Freed Cluster: %d\n", clust->Cluster_Num);
+		clust = clust->Next;
+	}
+	
+	write_fat_table(fat,fat_table); // Write table back to SD
 }
 
 node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned char attr)
@@ -840,4 +879,56 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
 	free(loc);
     
     return 0;
+}
+
+void delete_entry(fatfs_t *fat, node_entry_t *file)
+{
+	int sector_loc = file->Location[0];
+	int ptr = file->Location[1];
+	uint8_t sector[512];
+
+	/* Free LL of Data Clusters */
+	delete_cluster_list(fat, file);
+	
+	/* Delete Long file name entries (if any) */
+	ptr -= 32;
+	
+	if(ptr < 0)
+	{
+		sector_loc -= 1;
+		ptr = fat->boot_sector.bytes_per_sector - 32;
+	}
+
+	/* Read fat sector */
+	fat->dev->read_blocks(fat->dev, sector_loc, 1, sector);
+
+	/* Edit Entry */
+	while((sector+ptr)[ATTRIBUTE] == LONGFILENAME && (sector+ptr)[0] != 0xE5)
+	{
+		(sector+ptr)[0] = 0xE5;
+		ptr -= 32;
+	
+		if(ptr < 0)
+		{
+			fat->dev->write_blocks(fat->dev, sector_loc, 1, sector);
+			
+			sector_loc -= 1;
+			ptr = fat->boot_sector.bytes_per_sector - 32;
+			fat->dev->read_blocks(fat->dev, sector_loc, 1, sector);
+		}
+	}
+	
+	if(sector_loc != file->Location[0]) // Dont write and read the same block if we dont have to
+	{
+		/* Write it back */
+		fat->dev->write_blocks(fat->dev, sector_loc, 1, sector);
+			
+		/* Read sector */
+		fat->dev->read_blocks(fat->dev, file->Location[0], 1, sector);
+	}
+	
+	/* Delete file/folder entry */
+	(sector + file->Location[1])[0] = 0xE5;
+	
+	fat->dev->write_blocks(fat->dev, file->Location[0], 1, sector);
 }
