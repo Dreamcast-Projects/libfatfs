@@ -7,8 +7,7 @@ __BEGIN_DECLS
 
 #include <kos/blockdev.h>
 
-struct fatfs;
-typedef struct fatfs fatfs_t;
+#include "fat_defs.h"
 
 fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd);
 void fat_fs_shutdown(fatfs_t  *fs);

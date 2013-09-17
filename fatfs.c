@@ -16,7 +16,6 @@
 #include "dir_entry.h"
 #include "boot_sector.h"
 
-static int initted = 0;
 
 /* Read the Fat table from the SD card and stores it in table */
 void read_fat_table(fatfs_t *fat, unsigned char **table) 

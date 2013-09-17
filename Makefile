@@ -4,6 +4,8 @@
 TARGET = libfat2fs.a
 OBJS = boot_sector.o fatfs.o dir_entry.o fs_fat.o utils.o 
 
+KOS_CFLAGS += -W -pedantic -Werror -Wno-pointer-sign -std=c99
+
 all: create_kos_link defaultall
 
 # creates the kos link to the headers

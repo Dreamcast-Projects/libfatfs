@@ -7,7 +7,7 @@
 
 #include "utils.h"
 #include "fatfs.h"
-#include "fat_defs.h"
+
 #include "dir_entry.h"
 
 char * ExtractLongName(fat_lfn_entry_t *lfn) 
@@ -20,33 +20,33 @@ char * ExtractLongName(fat_lfn_entry_t *lfn)
 	memset(temp, 0, sizeof(char)*2);
 	memset(buf, 0, sizeof(char)*13);
 	
-	// Get first five ascii
+	/* Get first five ascii */
 	for(i = 0; i < 5; i++) 
 	{
 		temp[0] = (char)lfn->FNPart1[i];
 		strcat(buf, temp);
 	}
 	
-	// Next six ascii
+	/* Next six ascii */
 	for(i = 0; i < 6; i++) 
 	{
 		temp[0] = (char)lfn->FNPart2[i];
 		strcat(buf, temp);
 	}
 	
-	// Last two ascii
+	/* Last two ascii */
 	for(i = 0; i < 2; i++) 
 	{
 		temp[0] = (char)lfn->FNPart3[i];
 		strcat(buf, temp);
 	}
 	
-	// Remove filler chars at end of the long file name
-	buf = remove_all_chars(buf, 0xff);
+	/* Remove filler chars at end of the long file name */
+	buf = remove_all_chars(buf, 255);
 	
 	i = 0;
 	
-	// Convert long name into uppercase
+	/* Convert long name into uppercase */
 	while (buf[i])
     {
        c = buf[i];
@@ -69,15 +69,12 @@ cluster_node_t * GetClusterList(const unsigned char *table, int start_cluster)
 	start->Next = NULL;
 	memcpy(&cluster_num, &table[start_cluster*2], 2);
 	
-	//printf("Starting cluster: %x\n", start_cluster);
-	
 	while(cluster_num < 0xFFF8 ) {
 		temp->Next = (cluster_node_t *) malloc(sizeof(cluster_node_t));
 		temp = temp->Next;
 		temp->Cluster_Num = cluster_num;
 		temp->Next = NULL;
 		memcpy(&cluster_num,&table[cluster_num*2], 2);
-		//printf("Next cluster: %x\n", cluster_num);
 	}
 	
 	return start;
@@ -101,7 +98,7 @@ node_entry_t *isChildof(node_entry_t *parent, char *child_name) {
 	return NULL;
 }
 
-node_entry_t *fat_search_by_path(node_entry_t *root, char *fn)
+node_entry_t *fat_search_by_path(node_entry_t *root, const char *fn)
 {
     int i = 0;
     char c;
@@ -126,11 +123,11 @@ node_entry_t *fat_search_by_path(node_entry_t *root, char *fn)
             pch = strtok (NULL, "/");
 
             if(pch != NULL) {
-                    child = target;//->Children;
+                    child = target;
             }
 
             while(pch != NULL) {
-                    if(target = isChildof(child, pch)) 
+                    if((target = isChildof(child, pch))) 
                     {
                             pch = strtok (NULL, "/");
                             printf("Next: %s\n", pch);
@@ -160,8 +157,8 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 	int new_sector_loc = 0;
 	
 	unsigned char *buf = (unsigned char *)malloc(sizeof(unsigned char)*512);
-	unsigned char *lfnbuf1 = (unsigned char *)malloc(sizeof(unsigned char)*255); // Longest a filename can be is 255 chars
-	unsigned char *lfnbuf2 = (unsigned char *)malloc(sizeof(unsigned char)*255); // Longest a filename can be is 255 chars
+	unsigned char *lfnbuf1 = (unsigned char *)malloc(sizeof(unsigned char)*255); /* Longest a filename can be is 255 chars */
+	unsigned char *lfnbuf2 = (unsigned char *)malloc(sizeof(unsigned char)*255); /* Longest a filename can be is 255 chars */
 	
 	fat_lfn_entry_t lfn;
 	fat_dir_entry_t temp;
@@ -181,14 +178,11 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 		if((buf+var)[0] == DELETED || (buf+var)[0] == EMPTY) 
 		{ 
 			var += ENTRYSIZE; /* Increment to next entry */
-			//printf("BLANK ENRY FOUND\n");
 			continue; 
 		}
 		
 		/* Check if it is a long filename entry */
 		if((buf+var)[ATTRIBUTE] == LONGFILENAME) { 
-		
-			//printf("LONGNAME FOUND\n");
 			memset(&lfn, 0, sizeof(fat_lfn_entry_t));
 			memcpy(&lfn, buf+var, sizeof(fat_lfn_entry_t));
 		
@@ -209,8 +203,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 				}
 			}
 			var += ENTRYSIZE; 
-			continue; // Continue on to the next entry
-			//printf("Got through %dth iteration Sector(%d) : LONGNAME\n", i, sector_loc);
+			continue; /* Continue on to the next entry */
 		}
 		/* Its a file/folder entry */
 		else {
@@ -227,13 +220,12 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 			temp.FileName[8] = '\0';
 			temp.Ext[3] = '\0';
 			
-			// Deal with no long name
+			/* Deal with no long name */
 			if(lfnbuf1[0] == '\0' && lfnbuf2[0] == '\0')
 			{
-                                //printf("NO LONGNAME\n");
                                 strcat((char *)lfnbuf1, (const char *)temp.FileName);
-				if(temp.Ext[0] != ' ') { // If we actually have an extension....add it in
-					if(temp.Attr == VOLUME_ID) { // Extension is part of the VOLUME name(node->FileName)
+				if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
+					if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
 						strcat((char *)lfnbuf1, (const char *)temp.Ext);
 					}
 					else {
@@ -245,16 +237,15 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 				new_entry->Name = malloc(strlen((const char *)lfnbuf1));
 				new_entry->ShortName = malloc(strlen((const char *)lfnbuf1));
 				strcpy((char *)new_entry->Name, (const char *)lfnbuf1);
-				strcpy((char *)new_entry->ShortName, (const char *)lfnbuf1);  // Added
+				strcpy((char *)new_entry->ShortName, (const char *)lfnbuf1);  
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
-				//printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName);
+				/* printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName); */
 			}
 			else if(lfnbuf1[0] != '\0')
 			{
-				//printf("LONGNAME :1\n");
                                 strcat((char *)lfnbuf2, (const char *)temp.FileName);
-				if(temp.Ext[0] != ' ') { // If we actually have an extension....add it in
-					if(temp.Attr == VOLUME_ID) { // Extension is part of the VOLUME name(node->FileName)
+				if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
+					if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
 						strcat((char *)lfnbuf2, (const char *)temp.Ext);
 					}
 					else {
@@ -263,41 +254,40 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 					}
 				}
 				
-				new_entry->Name = (char *)malloc(strlen((const char *)lfnbuf1));
-				new_entry->ShortName = (char *)malloc(strlen((const char *)lfnbuf2));
+				new_entry->Name = malloc(strlen((const char *)lfnbuf1));
+				new_entry->ShortName = malloc(strlen((const char *)lfnbuf2));
 				strcpy((char *)new_entry->Name, (const char *)lfnbuf1);
-				strcpy((char *)new_entry->ShortName, (const char *)lfnbuf2);  // Added
+				strcpy((char *)new_entry->ShortName, (const char *)lfnbuf2);  
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
 				memset(lfnbuf2, 0, sizeof(lfnbuf1));
-				//printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName);
+				/* printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName); */
 			}
 			else {
-				//printf("LONGNAME :2\n");
-				strcat(lfnbuf1, (const char *)temp.FileName);
-				if(temp.Ext[0] != ' ') { // If we actually have an extension....add it in
-					if(temp.Attr == VOLUME_ID) { // Extension is part of the VOLUME name(node->FileName)
-						strcat(lfnbuf1, temp.Ext);
+				strcat((char *)lfnbuf1, (const char *)temp.FileName);
+				if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
+					if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
+						strcat((char *)lfnbuf1, temp.Ext);
 					}
 					else {
-						strcat(lfnbuf1, ".");
-						strcat(lfnbuf1, temp.Ext);
+						strcat((char *)lfnbuf1, ".");
+						strcat((char *)lfnbuf1, temp.Ext);
 					}
 				}
 				
-				new_entry->Name = (char *)malloc(strlen(lfnbuf2));
-				new_entry->ShortName = (char *)malloc(strlen(lfnbuf1));
+				new_entry->Name = malloc(strlen(lfnbuf2));
+				new_entry->ShortName = malloc(strlen(lfnbuf1));
 				strcpy(new_entry->Name, lfnbuf2);
-				strcpy(new_entry->ShortName, lfnbuf1);  // Added
+				strcpy(new_entry->ShortName, lfnbuf1);  
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
 				memset(lfnbuf2, 0, sizeof(lfnbuf2));
-				//printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName);
+				/* printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName); */
 			}			
 			
 			new_entry->Attr = temp.Attr;
 			new_entry->FileSize = temp.FileSize;
 			new_entry->Data_Clusters = GetClusterList(fat_table, temp.FstClusLO);
-			new_entry->Location[0] = sector_loc; // Sector
-			new_entry->Location[1] = var; // Byte in sector
+			new_entry->Location[0] = sector_loc; 
+			new_entry->Location[1] = var; /* Byte in sector */
 			new_entry->Parent = parent;
 			new_entry->Children = NULL;
 			new_entry->Next = NULL;
@@ -314,13 +304,13 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 				child->Next = new_entry;
 			}
 			
-			if(new_entry->Attr == DIRECTORY && new_entry->Name[0] != 0x2E && !(new_entry->Name[0] == 0x2E && new_entry->Name[1] == 0x2E)) { // Dont do this for .(current direct) and ..(parent) 
-			    //printf("Found a folder !!\n");
+			if(new_entry->Attr == DIRECTORY && new_entry->Name[0] != 0x2E && !(new_entry->Name[0] == 0x2E && new_entry->Name[1] == 0x2E)) { /* Dont do this for .(current direct) and ..(parent) 
+			    printf("Found a folder !!\n"); */
 			 
 				node = new_entry->Data_Clusters;
 				
 				do {	
-				    new_sector_loc = fat->data_sec_loc + (node->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster; // Calculate sector loc from cluster given
+				    new_sector_loc = fat->data_sec_loc + (node->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster; /* Calculate sector loc from cluster given */
 					for(j = 0;j < fat->boot_sector.sectors_per_cluster; j++) {
 						parse_directory_sector(fat, new_entry, new_sector_loc + j, fat_table);
 					}
@@ -349,8 +339,8 @@ uint8_t *fat_read_data(fatfs_t *fat, node_entry_t *file, int count, int pointer)
 	int numToRead = 0;
 	const int bytes_per_sector = fat->boot_sector.bytes_per_sector;
 	cluster_node_t  *node = NULL;
-	uint8_t *buf = (uint8_t *)malloc(sizeof(uint8_t)*count); // 
-	uint8_t sector[512]; // Each sector is 512 bytes long
+	uint8_t *buf = malloc(sizeof(uint8_t)*count); 
+	uint8_t sector[512]; /* Each sector is 512 bytes long */
 
 	/* Clear */
 	memset(buf, 0, sizeof(buf));
@@ -358,16 +348,16 @@ uint8_t *fat_read_data(fatfs_t *fat, node_entry_t *file, int count, int pointer)
 	/* While we still have more to read, do it */
 	while(cnt)
 	{
-		// Get the number of the sector in the cluster we want to read
+		/* Get the number of the sector in the cluster we want to read */
 		numOfSector = ptr / bytes_per_sector;
 
-		// Figure out which cluster we are reading from
+		/* Figure out which cluster we are reading from */
 		clusterNodeNum = numOfSector / fat->boot_sector.sectors_per_cluster;
 
-		// Set to first cluster
+		/* Set to first cluster */
 		node = file->Data_Clusters; 
 
-		// Start at 1 because we set to first cluster above. Advance to the cluster we want to read from.
+		/* Start at 1 because we set to first cluster above. Advance to the cluster we want to read from. */
 		for(i = 1; i < clusterNodeNum; i++) 
 		{
 			node = node->Next;
@@ -396,8 +386,8 @@ uint8_t *fat_read_data(fatfs_t *fat, node_entry_t *file, int count, int pointer)
 		strncat(buf, sector + curSectorPos, numToRead);
 
 		/* Advance variables */
-		ptr += numToRead;  // Advance file pointer 
-		cnt -= numToRead;  // Decrease bytes left to read 
+		ptr += numToRead;  /* Advance file pointer */
+		cnt -= numToRead;  /* Decrease bytes left to read */
 	}
 
 	return buf;
@@ -414,9 +404,8 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, uint8_t *bbuf, int count, i
 	int sector_loc = 0;  
 	int numToWrite = 0;
 	const int bytes_per_sector = fat->boot_sector.bytes_per_sector;
-	cluster_node_t  *node = NULL;
-	uint8_t *buf = (uint8_t *)malloc(sizeof(uint8_t)*count); // 
-	uint8_t sector[512]; // Each sector is 512 bytes long
+	cluster_node_t  *node = NULL; 
+	uint8_t sector[512]; /* Each sector is 512 bytes long */
 
 	/* Clear */
 	memset(sector, 0, sizeof(sector));
@@ -442,7 +431,7 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, uint8_t *bbuf, int count, i
 		/* Check if node equals NULL. If it does then allocate another cluster for this file */
                 if(node == NULL)
                 {
-                    if(node = allocate_cluster(fat, file->Data_Clusters))
+                    if((node = allocate_cluster(fat, file->Data_Clusters)))
                     {
                         printf("All out of clusters to Allocate\n");
                         return -1;
@@ -457,8 +446,6 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, uint8_t *bbuf, int count, i
 
 		/* Read 1 sector */
 		fat->dev->read_blocks(fat->dev, sector_loc, 1, sector); 
-
-		//printf("Read Sector: %s\n", sector);
 
 		/* Calculate current byte position in the sector we want to start writing to */
 		curSectorPos = ptr - (numOfSector * bytes_per_sector);
@@ -477,8 +464,8 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, uint8_t *bbuf, int count, i
 		}
 
 		/* Advance variables */
-		ptr += numToWrite;  // Advance file pointer 
-		cnt -= numToWrite;  // Decrease bytes left to write
+		ptr += numToWrite;  /* Advance file pointer */
+		cnt -= numToWrite;  /* Decrease bytes left to write */
 	}
 
 	return count;
@@ -486,8 +473,7 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, uint8_t *bbuf, int count, i
 
 void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 {
-	//char buffer[20];
-	uint8_t sector[512]; // Each sector is 512 bytes long
+	uint8_t sector[512]; /* Each sector is 512 bytes long */
 	
 	time_t rawtime;
 	short int tme = 0;
@@ -514,27 +500,25 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	/* Write it back */
 	fat->dev->write_blocks(fat->dev, file->Location[0], 1, sector);
         
-	if(file->Parent->Parent != NULL) // If this file/folder is in a 
-	{                                // subdirectory[Not the ROOT Directory] update it as well (recursively)
+	if(file->Parent->Parent != NULL) /* If this file/folder is in a */
+	{                                /* subdirectory[Not the ROOT Directory] update it as well (recursively) */
 		update_fat_entry(fat, file->Parent);
 		
 		/*
 		memset(sector, 0, sizeof(sector));
 		
-		/* Read fat sector 
+		// Read fat sector 
 		fat->dev->read_blocks(fat->dev, file->Parent->Location[0], 1, sector);
 		
-		/* Edit Folder 
+		// Edit Folder 
 		memcpy(sector + file->Parent->Location[1] + LASTACCESSDATE, &(date), 2);
 		memcpy(sector + file->Parent->Location[1] + LASTWRITETIME, &(tme), 2);
 		memcpy(sector + file->Parent->Location[1] + LASTWRITEDATE, &(date), 2);
 
-		/* Write it back 
+		// Write it back 
 		fat->dev->write_blocks(fat->dev, file->Parent->Location[0], 1, sector);
 		*/
 	}
-        
-	return;
 }
 
 void delete_tree_entry(node_entry_t * node)
@@ -542,11 +526,11 @@ void delete_tree_entry(node_entry_t * node)
 	node_entry_t *child;
     cluster_node_t  *old;
     
-	if(node->Parent->Children == node) // If we are the first child in the list
+	if(node->Parent->Children == node) /* If we are the first child in the list */
 	{
 		node->Parent->Children = node->Next;
 	}
-	else // Otherwise...
+	else /* Otherwise... */
 	{
 		child = node->Parent->Children;
 		
@@ -558,9 +542,9 @@ void delete_tree_entry(node_entry_t * node)
 		child->Next = node->Next;
 	}
 	
-    free(node->Name); // Free the name
+    free(node->Name); /* Free the name */
     
-    // Free the LL Data Clusters
+    /* Free the LL Data Clusters */
     while(node->Data_Clusters)
     {
         old = node->Data_Clusters;
@@ -592,7 +576,7 @@ void delete_directory_tree(node_entry_t * node)
 cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
 {
     int fat_index = 2;
-    int cluster_num = -1;
+    unsigned int cluster_num = 0;
     cluster_node_t *clust = cluster;
     cluster_node_t *temp = NULL;
     
@@ -600,7 +584,7 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
     
     read_fat_table(fat, &fat_table); 
     
-    // Handle NULL cluster(Happens when a new file is created)
+    /* Handle NULL cluster(Happens when a new file is created) */
     if(cluster != NULL) {  
         while(clust->Next)
         {
@@ -608,23 +592,23 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
         }
     }
     
-    // We are now at the end of the LL. Search for a free cluster.
-    while(fat_index < fat->boot_sector.bytes_per_sector*fat->boot_sector.table_size_16) { // Go through Table one index at a time
+    /* We are now at the end of the LL. Search for a free cluster. */
+    while(fat_index < fat->boot_sector.bytes_per_sector*fat->boot_sector.table_size_16) { /* Go through Table one index at a time */
 	
         memcpy(&cluster_num, &fat_table[fat_index*2], 2);
 		
 		printf("Cluster num value found: %d\n", cluster_num);
         
-        // If we found a free entry
+        /* If we found a free entry */
         if(cluster_num == 0xFFFF0000)
         {
             printf("Found a free cluster entry -- Index: %d\n", fat_index);
 		
             cluster_num = 0xFFF8;
-            if(cluster != NULL) // Cant change what doesnt exist
-                memcpy(&fat_table[clust->Cluster_Num*2], &fat_index, 2); // Change the table to indicate an allocated cluster
-            memcpy(&fat_table[fat_index*2], &cluster_num, 2); // Change the table to indicate new end of file
-            write_fat_table(fat,fat_table); // Write table back to SD
+            if(cluster != NULL) /* Cant change what doesnt exist */
+                memcpy(&fat_table[clust->Cluster_Num*2], &fat_index, 2); /* Change the table to indicate an allocated cluster */
+            memcpy(&fat_table[fat_index*2], &cluster_num, 2); /* Change the table to indicate new end of file */
+            write_fat_table(fat,fat_table); /* Write table back to SD */
             
             temp = (cluster_node_t *)malloc(sizeof(cluster_node_t));
             temp->Cluster_Num = fat_index;
@@ -659,7 +643,7 @@ void delete_cluster_list(fatfs_t *fat, node_entry_t *f)
 		clust = clust->Next;
 	}
 	
-	write_fat_table(fat,fat_table); // Write table back to SD
+	write_fat_table(fat,fat_table); /* Write table back to SD */
 }
 
 node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned char attr)
@@ -681,11 +665,11 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
     while (fn[i])
     {
        c = fn[i];
-       ufn[i] = (char)toupper(c);
+       ufn[i] = toupper((int)c);
        i++;
     }
 
-    pch = strtok(ufn,"/");  // Grab Root
+    pch = strtok(ufn,"/");  /* Grab Root */
 	
     if(strcmp(pch, target->Name) == 0) {
         pch = strtok (NULL, "/"); 
@@ -695,9 +679,9 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
         }
 
         while(pch != NULL) {
-            if(target = isChildof(child, pch)) 
+            if((target = isChildof(child, pch))) 
             {
-				if(target->Attr & READ_ONLY) // Check and make sure directory is not read only.
+				if(target->Attr & READ_ONLY) /* Check and make sure directory is not read only. */
 				{
 					errno = EROFS;
 					return NULL;
@@ -711,24 +695,24 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
             }
             else 
             {
-                filename = pch; // We possibly have the filename
+                filename = pch; /* We possibly have the filename */
                 
                 printf("Possible Name: %s\n", filename);
                 
-                // Return NULL if we encounter a directory that doesn't exist
-                if(pch = strtok (NULL, "/")) { // See if there is more to parse through
+                /* Return NULL if we encounter a directory that doesn't exist */
+                if((pch = strtok (NULL, "/"))) { /* See if there is more to parse through */
                     errno = ENOTDIR;
-                    return NULL;               // if there is that means we are looking in a directory
-                }                              // that doesn't exist.
+                    return NULL;               /* if there is that means we are looking in a directory */
+                }                              /* that doesn't exist. */
                 
-                // Make sure the filename is valid 
+                /* Make sure the filename is valid */
                 if(correct_filename(filename) == -1)
                 {
                     return NULL;
                 }
                 
-                // Directory trees file/folder names are always capitalized 
-                // Make sure we get the original case of the file/folder name to save to SD
+                /* Directory trees file/folder names are always capitalized 
+                   Make sure we get the original case of the file/folder name to save to SD */
                 entry_filename = (char *)malloc(strlen(filename) + 1);
                 memset(entry_filename, 0, strlen(filename) + 1);
                 strncpy(entry_filename, fn + (strlen(fn) - strlen(filename)), strlen(filename));
@@ -736,7 +720,7 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
                 
                 printf("Entry Name: %s\n", entry_filename);
            
-                // Create file/folder
+                /* Create file/folder */
                 newfile = (node_entry_t *) malloc(sizeof(node_entry_t));
                 newfile->Name = filename;
                 newfile->Attr = attr;
@@ -744,25 +728,25 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
                 newfile->Data_Clusters = NULL; 
                 newfile->Parent = child;
                 newfile->Children = NULL;  
-                newfile->Next = NULL;      // Adding to end of Parent(var child) list of children
+                newfile->Next = NULL;      /* Adding to end of Parent(var child) list of children */
                 
                 if(generate_and_write_entry(fat, entry_filename, newfile) == -1)
                 {
 					printf("Didnt Create file/folder\n");
-                    delete_tree_entry(newfile);  //This doesn't take care of removing clusters from SD card
+                    delete_tree_entry(newfile);  /*This doesn't take care of removing clusters from SD card */
                     errno = EDQUOT;
                     return NULL;  
                 }
                 
-                // Created file on SD successfully. Now add this new file to the directory tree
+                /* Created file on SD successfully. Now add this new file to the directory tree */
                 temp = child->Children;
                 
-                // Folder has no children. Set Children to be this new file
+                /* Folder has no children. Set Children to be this new file */
                 if(temp == NULL)
                 {
                     child->Children = newfile;
                 }
-                else // Otherwise go to the end of the LL of Children
+                else /* Otherwise go to the end of the LL of Children */
                 {
                     while(temp->Next != NULL)
                     {
@@ -777,7 +761,7 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
         }
     }
     
-    // Path was invalid from the beginning
+    /* Path was invalid from the beginning */
     errno = ENOTDIR;
     return NULL;
 }
@@ -785,18 +769,16 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
 int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 {
 	int i;
-	int j;
-	int *loc;
+	int *loc = NULL;
 	int last;
 	unsigned char order = 1;
-	int offset = 0;
+	unsigned int offset = 0;
 	int longfilename = 0;
 	char *shortname;
 	unsigned char checksum;
 
     fat_dir_entry_t entry;
-	fat_lfn_entry_t *lfn_entry;
-	fat_lfn_entry_t *lfn_entry_list[20];  // Can have a maximum of 20 long file name entries
+	fat_lfn_entry_t *lfn_entry_list[20];  /* Can have a maximum of 20 long file name entries */
 	
 	for(i = 0; i < 20; i++)
 		lfn_entry_list[i] = NULL;
@@ -806,43 +788,43 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
 	
 	printf("Shortfile Name: %s\n", shortname);
     
-	// Make lfn entries
+	/* Make lfn entries */
 	if(longfilename)
     {
 		i = 0;
 		
 		while(offset < strlen(entry_name))
 		{
-			// Build long name entries
+			/* Build long name entries */
 			lfn_entry_list[i++] = generate_long_filename_entry(entry_name+offset, checksum, order++);
 			offset += 13;
 		}
 		
 		printf("Built %d Long file entrie(s) \n", (order-1));
 		
-		last = i - 1; // Refers to last entry in array
+		last = i - 1; /* Refers to last entry in array */
 		
-		lfn_entry_list[last]->Order |= 0x40; // Set(OR) last one to special value order
+		lfn_entry_list[last]->Order |= 0x40; /* Set(OR) last one to special value order */
 		
-		// Get loc for j amount of entries plus 1(shortname entry). Returns an int array Sector(loc[0]), ptr(loc[1])
+		/* Get loc for order amount of entries plus 1(shortname entry). Returns an int array Sector(loc[0]), ptr(loc[1]) */
 		loc = get_free_locations(fat, newfile->Parent, (int)order);
 		
 		printf("Sector: %d Ptr: %d\n", loc[0], loc[1]);
 		
-		// Write it(reverse order)
+		/* Write it(reverse order) */
 		for(i = last; i >= 0; i--)
 		{
 			write_entry(fat, lfn_entry_list[i], LONGFILENAME, loc);
 				
 			printf("Wrote lfn entry\n");	
 				
-			// Do calculations for sector if need be
+			/* Do calculations for sector if need be */
 			loc[1] += 32;
 			
 			if((loc[1]/fat->boot_sector.bytes_per_sector) >= 1)
 			{
-				loc[0]++;   // New sector
-				loc[1] = 0; // Reset ptr in sector
+				loc[0]++;   /* New sector */
+				loc[1] = 0; /* Reset ptr in new sector */
 			}
 		}
 		
@@ -852,16 +834,16 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
 	/* Allocate a cluster */
 	newfile->Data_Clusters = allocate_cluster(fat, NULL);
 	
-	// Make regular entry and write it to SD FAT
+	/* Make regular entry and write it to SD FAT */
 	strncpy(entry.FileName, shortname, 8);
 	entry.FileName[8] = '\0';
-	strncpy(entry.Ext, shortname+9, 3 ); // Skip filename and '.' 
+	strncpy(entry.Ext, shortname+9, 3 ); /* Skip filename and '.' */
 	entry.Ext[3] = '\0';
 	entry.Attr = newfile->Attr;
-	entry.FileSize = 0;   // For both new files and new folders
+	entry.FileSize = 0;   /* For both new files and new folders */
 	entry.FstClusLO = newfile->Data_Clusters->Cluster_Num;
 	
-	// Write it (after long file name entries)
+	/* Write it (after long file name entries) */
 	if(longfilename)
 	{
 		write_entry(fat, &entry, newfile->Attr, loc);
@@ -883,7 +865,7 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
 
 void delete_entry(fatfs_t *fat, node_entry_t *file)
 {
-	int sector_loc = file->Location[0];
+	unsigned int sector_loc = file->Location[0];
 	int ptr = file->Location[1];
 	uint8_t sector[512];
 
@@ -918,7 +900,7 @@ void delete_entry(fatfs_t *fat, node_entry_t *file)
 		}
 	}
 	
-	if(sector_loc != file->Location[0]) // Dont write and read the same block if we dont have to
+	if(sector_loc != file->Location[0]) /* Dont write and read the same block if we dont have to */
 	{
 		/* Write it back */
 		fat->dev->write_blocks(fat->dev, sector_loc, 1, sector);

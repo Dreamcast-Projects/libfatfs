@@ -6,14 +6,14 @@
 #include <sys/cdefs.h>
 __BEGIN_DECLS
 
-//#define FAT2FS_DEBUG 1
+/* #define FAT2FS_DEBUG 1 */
 
 #include <stdint.h>
 
 #include <kos/blockdev.h>
 
-/* Following three structs are copy+pasted from http://wiki.osdev.org/FAT#Boot_Record */
-/* NOTE: The boot sector of all FAT file systems is 512 bytes. So grab the 512 bytes of info and
+/* Following three structs are copy+pasted from http://wiki.osdev.org/FAT#Boot_Record 
+   NOTE: The boot sector of all FAT file systems is 512 bytes. So grab the 512 bytes of info and
    memcpy that into a fat_BS_t structure. Then once you figure out which file system FAT12/16 or FAT32
    (table_size_16 > 0 for FAT12/16 and table_size_16 = 0 for FAT32) you can memcopy/cast the 'extended_section' 
    of the fat_BS_t struct into the proper struct(fat_extBS_16[works for FAT12 as well] or fat_extBS_32).
@@ -21,7 +21,7 @@ __BEGIN_DECLS
 
 typedef struct fat_extBS_32
 {
-	//extended fat32 stuff
+	/* extended fat32 stuff */
 	unsigned int		table_size_32;
 	unsigned short		extended_flags;
 	unsigned short		fat_version;
@@ -40,7 +40,7 @@ typedef struct fat_extBS_32
  
 typedef struct fat_extBS_16
 {
-	//extended fat12 and fat16 stuff
+	/* extended fat12 and fat16 stuff */
 	unsigned char		bios_drive_num;          /* Drive number. Nothing important. */
 	unsigned char		reserved1;
 	unsigned char		boot_signature;
@@ -67,7 +67,7 @@ typedef struct fat_BS
 	unsigned int 		hidden_sector_count;     /* Number of hidden sectors. (i.e. the LBA of the beginning of the partition.) */
 	unsigned int 		total_sectors_32;        /* Large amount of sector on media. This field is set if there are more than 65535 sectors in the volume, in which case total_sectors_16 is zero */
  
-	//this will be cast to it's specific type once the driver actually knows what type of FAT this is.
+	/* this will be cast to it's specific type once the driver actually knows what type of FAT this is. */
 	unsigned char		extended_section[54];
  
 }__attribute__((packed)) fat_BS_t;

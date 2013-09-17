@@ -5,8 +5,7 @@
 
 __BEGIN_DECLS
 
-struct fatfs;
-typedef struct fatfs fatfs_t;
+#include "fat_defs.h"
 
 /* List of attributes the following structures may take */
 #define READ_ONLY    0x01 
@@ -41,8 +40,12 @@ typedef struct fatfs fatfs_t;
 #define DELETED   0xE5     /* The first byte of a deleted entry */
 #define EMPTY     0        /* Shows an empty entry */
 
+typedef struct fatfs fatfs_t;
+
+typedef struct fat_long_fn_dir_entry fat_lfn_entry_t;
+
 /* FNPart1, FNPart2, and FNPart3 are unicode characters */
-typedef struct fat_long_fn_dir_entry 
+struct fat_long_fn_dir_entry 
 {
 	unsigned char Order;        /* The order of this entry in the sequence of long file name entries. There can be many of these entry stacked to make a really long filename 
 	                               The specification says that the last entry value(Order) will be ORed with 0x40(01000000) and it is the mark for last entry
@@ -55,10 +58,11 @@ typedef struct fat_long_fn_dir_entry
 	unsigned short FNPart2[6];  /* The next 6, 2-byte characters of this entry. */
 	unsigned short Cluster;     /* Unused. Always 0 */
 	unsigned short FNPart3[3];   /* The final 2, 2-byte characters of this entry. */
-} fat_lfn_entry_t;
-//__attribute__((packed)) fat_lfn_entry_t;
+};
 
-typedef struct fat_dir_entry 
+typedef struct fat_dir_entry fat_dir_entry_t;
+
+struct fat_dir_entry 
 {
     unsigned char FileName[9];  /* Represent the filename. The first character in array can hold special values. See http://www.tavi.co.uk/phobos/fat.html */
     unsigned char Ext[4];       /* Indicate the filename extension.  Note that the dot used to separate the filename and the filename extension is implied, and is not actually stored anywhere */
@@ -98,8 +102,8 @@ typedef struct fat_dir_entry
     unsigned short WrtDate;     /* Same format as CrtDate above */
     unsigned short FstClusLO;   /* The low 16 bits of this entry's first cluster number. Use this number to find the first cluster for this entry. */
     unsigned int FileSize;      /* The size of the file in bytes. This should be 0 if the file type is a folder */
-} fat_dir_entry_t;
-//__attribute__((packed)) fat_dir_entry_t;
+};
+
 
 /* Used to make a linked list of clusters that make up a file/folder. Used so we dont have to keep checking the FAT. */
 typedef struct cluster_node {
@@ -112,17 +116,20 @@ typedef struct cluster_node {
    
    Files/folders in the same directory are linked together in a Singly-Linked List(*Next) 
 */
-typedef struct node_entry {
+
+typedef struct node_entry node_entry_t;
+
+struct node_entry {
 	unsigned char *Name;               /* Holds name of file/folder */
 	unsigned char *ShortName;          /* Holds the short name (entry). No two files can have the same short name. Can be equal to Name. */
 	unsigned char Attr;                /* Holds the attributes of entry */
 	unsigned int FileSize;             /* Holds the size of the file */
 	unsigned int Location[2];          /* Location in FAT Table. Location[0]: Sector, Location[1]: Byte in that sector */
 	cluster_node_t    *Data_Clusters;  /* A linked list to all the data clusters this file/folder uses */
- 	struct node_entry *Parent;         /* The folder this file/folder belongs to */
-	struct node_entry *Children;       /* Should only be NULL when this is a file or an empty folder. Only folders are allowed to have children */
-	struct node_entry *Next;           /* The next file/folder in the current directory */
-} node_entry_t;
+ 	node_entry_t *Parent;         /* The folder this file/folder belongs to */
+	node_entry_t *Children;       /* Should only be NULL when this is a file or an empty folder. Only folders are allowed to have children */
+	node_entry_t *Next;           /* The next file/folder in the current directory */
+};
 
 /* Prototypes */
 int generate_and_write_entry(fatfs_t *fat, char *filename, node_entry_t *newfile);
@@ -135,7 +142,7 @@ void delete_directory_tree(node_entry_t * node);
 void update_fat_entry(fatfs_t *fat, node_entry_t *file);
 int fat_write_data(fatfs_t *fat, node_entry_t *file, uint8_t *bbuf, int count, int ptr);
 uint8_t *fat_read_data(fatfs_t *fat, node_entry_t *file, int cnt, int ptr);
-node_entry_t *fat_search_by_path(node_entry_t *dir, char *fn);
+node_entry_t *fat_search_by_path(node_entry_t *dir, const char *fn);
 void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, unsigned char *fat_table);
 
 

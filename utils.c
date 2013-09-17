@@ -9,13 +9,13 @@
 
 #include "utils.h"
 #include "fat_defs.h"
-#include "dir_entry.h"
 
 /* 'str' is the string you want to remove characters 'c' from */
-char *remove_all_chars(const char* str, char c) {
-	char *copy = (char *)malloc(strlen(str));
+char *remove_all_chars(const char* str, unsigned char c) {
+	char *copy = malloc(strlen(str)+1);
 	strcpy(copy,str);
-    	char *pr = copy, *pw = copy;
+    	char *pr = copy;
+	char *pw = copy;
     	while (*pr) {
         	*pw = *pr++;
         	pw += (*pw != c);
@@ -47,10 +47,10 @@ void strrev(char *str) {
 }
 
 /* 'replace_chars' contains characters that you want to replace with character 'replace_with' in string str */
-void replace_all_chars(char **str, const char* replace_chars, char replace_with) {
+void replace_all_chars(char **str, const char* replace_chars, unsigned char replace_with) {
 	char *c;
 	
-	c = *str;
+	c = (char *)*str;
    
 	while (*c)
 	{
@@ -66,11 +66,11 @@ void replace_all_chars(char **str, const char* replace_chars, char replace_with)
 /* Returns 1 if a lowercase character is found in 'str', reurns 0 otherwise */
 int contains_lowercase(const char *str)
 {
-	char *c = str;
+	const char *c = str;
 	
 	while (*c)
     {
-		if(islower(*c))
+		if(islower((int)*c))
 		{
 			return 1;
 		}
@@ -86,14 +86,14 @@ char *trimwhitespace(char *str)
   char *end;
 
   // Trim leading space
-  while(isspace(*str)) str++;
+  while(isspace((int)*str)) str++;
 
   if(*str == 0)  // All spaces?
     return str;
 
   // Trim trailing space
   end = str + strlen(str) - 1;
-  while(end > str && isspace(*end)) end--;
+  while(end > str && isspace((int)*end)) end--;
 
   // Write new null terminator
   *(end+1) = 0;
@@ -105,7 +105,7 @@ char *trimwhitespace(char *str)
 int correct_filename(const char* str)
 {
    const char *invalid_characters = "\\?:*\"><|";
-   char *c = str;
+   const char *c = str;
    
    /* Make sure the string is long and short enough */
    if(strlen(str) > 255 || strlen(str) <= 0)
@@ -319,11 +319,11 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 	
 	if(contains_lowercase(fn_final))
 	{
-		int i;
+		unsigned int i;
 		*lfn = 1; // This needs a long file name entry
 		
 		for(i = 0; i < strlen(fn_final); i++)
-			fn_final[i] = toupper(fn_final[i]);
+			fn_final[i] = toupper((int)fn_final[i]);
 	}
 	
 	//printf("Final Version - Filename: %s\n", fn_final);
@@ -341,7 +341,7 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 
 fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum, unsigned char order)
 {
-	char fill[2];
+	char *fill = malloc(1);
 	char *filename = malloc(13); // 
 	fat_lfn_entry_t *lfn_entry = malloc(sizeof(fat_lfn_entry_t));
 	
@@ -351,7 +351,7 @@ fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum,
 	
 	while(strlen(filename) < 13)  // Pad with 0xFF if need be (means we are on the last entry)
 	{
-		strcat(filename, fill[0]);
+		strcat(filename, fill);
 	}
 
 	lfn_entry->Order = order;
@@ -382,7 +382,7 @@ fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum,
 	
 	lfn_entry->Attr = 0xF; // Specifying it is a long name entry (Gets over written by setting null)
 	
-	printf("Generate Long Filename Entry -- Order: %d Part1: %s, Part2: %s, Part3: %s Attr: %d %x \n", order, lfn_entry->FNPart1, lfn_entry->FNPart2, lfn_entry->FNPart3, lfn_entry->Attr);
+	/* printf("Generate Long Filename Entry -- Order: %d Part1: %s, Part2: %s, Part3: %s Attr: %d %x \n", order, lfn_entry->FNPart1, lfn_entry->FNPart2, lfn_entry->FNPart3, lfn_entry->Attr); */
 	
 	free(filename);
 	
@@ -452,7 +452,7 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 		memcpy(sector + loc[1] + FNPART2, lfn_entry->FNPart2, 12);
 		memcpy(sector + loc[1] + FNPART3, lfn_entry->FNPart3, 4);
 		
-		printf("Just saved:\n Order: %d FNPart1: %s Attr: %x Checksum: %x FNPart2: %s FNPart3: %s\n", lfn_entry->Order, lfn_entry->FNPart1, lfn_entry->Attr, lfn_entry->Checksum, lfn_entry->FNPart2, lfn_entry->FNPart3);
+		/* printf("Just saved:\n Order: %d FNPart1: %s Attr: %x Checksum: %x FNPart2: %s FNPart3: %s\n", lfn_entry->Order, lfn_entry->FNPart1, lfn_entry->Attr, lfn_entry->Checksum, lfn_entry->FNPart2, lfn_entry->FNPart3); */
 	}
 	else             // File/folder entry
 	{
@@ -472,7 +472,7 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 		memcpy(sector + loc[1] + STARTCLUSTER, &(f_entry->FstClusLO), 2);
 		memcpy(sector + loc[1] + FILESIZE, &(f_entry->FileSize), 4);
 		
-		printf("Just saved:\n Name: %s Extension: %s Attr: %x Cluster: %d Filesize: %d\n", f_entry->FileName, f_entry->Ext, f_entry->Attr, f_entry->FstClusLO, f_entry->FileSize);
+		/*printf("Just saved:\n Name: %s Extension: %s Attr: %x Cluster: %d Filesize: %d\n", f_entry->FileName, f_entry->Ext, f_entry->Attr, f_entry->FstClusLO, f_entry->FileSize);*/
 	}
 	
 	/* Write it back */
