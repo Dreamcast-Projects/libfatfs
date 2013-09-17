@@ -424,11 +424,8 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	short int date = 0;
 	struct tm * timeinfo;
 	
-	//printf("Trying to grab time itself\n");
-
 	time (&rawtime);
 	timeinfo = localtime (&rawtime);
-	//printf ("Current local time and date: %s\n", asctime(timeinfo));
 	
 	if(attr == 0x0F)
 	{
@@ -445,12 +442,9 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	/* Read it */
 	fat->dev->read_blocks(fat->dev, loc[0], 1, sector); 
 	
-	//printf("Before copying\n");
-	
 	/* Memcpy */
 	if(attr == 0x0F) // Long file entry
 	{
-		//printf("Writing LFN entry: Order %d\n", lfn_entry->Order);
 		memcpy(sector + loc[1] + ORDER, &(lfn_entry->Order), 1);
 		memcpy(sector + loc[1] + FNPART1, lfn_entry->FNPart1, 10);
 		memcpy(sector + loc[1] + ATTRIBUTE, &(lfn_entry->Attr), 1);
@@ -480,8 +474,6 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 		
 		printf("Just saved:\n Name: %s Extension: %s Attr: %x Cluster: %d Filesize: %d\n", f_entry->FileName, f_entry->Ext, f_entry->Attr, f_entry->FstClusLO, f_entry->FileSize);
 	}
-	
-	//printf("After copying\n");
 	
 	/* Write it back */
 	fat->dev->write_blocks(fat->dev, loc[0], 1, sector);

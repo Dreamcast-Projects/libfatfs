@@ -56,6 +56,14 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     strcat(ufn, "/sd");
     strcat(ufn, fn);
 
+    /* Make sure if we're going to be writing to the file that the fs is mounted
+       read/write. */
+    if((mode & (O_TRUNC | O_WRONLY | O_RDWR)) &&
+       !(mnt->mount_flags & FS_FAT_MOUNT_READWRITE)) {
+        errno = EROFS;
+        return NULL;
+    }
+
     /* Find the object in question */
     found = fat_search_by_path(mnt->fs->root, ufn);
 
@@ -74,11 +82,11 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
          if(found == NULL)
              return NULL;
     }
-	else if(found != NULL && (found->Attr & READ_ONLY) && ((mode & O_WRONLY) || (mode & O_RDWR))) 
-	{
-		errno = EROFS;
-		return NULL;
-	}
+    else if(found != NULL && (found->Attr & READ_ONLY) && ((mode & O_WRONLY) || (mode & O_RDWR))) 
+    {
+	errno = EROFS;
+	return NULL;
+    }
     
     /* Set filesize to 0 if we set mode to O_TRUNC */
     if((mode & O_TRUNC) && ((mode & O_WRONLY) || (mode & O_RDWR)))
@@ -142,12 +150,12 @@ static void fs_fat_close(void * h) {
         // Change file size
         // Change time
         if(fh[fd].mode & O_WRONLY || fh[fd].mode & O_RDWR)
-		{
-			//printf("Updating File Entry\n");
+	{
+	    //printf("Updating File Entry\n");
             update_fat_entry(fh[fd].mnt->fs, fh[fd].node);
-		}
+	}
 		
-		fh[fd].mode = 0;
+	fh[fd].mode = 0;
     }
 
     mutex_unlock(&fat_mutex);
@@ -166,7 +174,7 @@ static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
     // Check that the fd is valid 
     if(fd >= MAX_FAT_FILES || !fh[fd].used) {
         mutex_unlock(&fat_mutex);
-        errno = EINVAL;
+        errno = EBADF;
         return -1;
     }
 
@@ -226,7 +234,7 @@ static ssize_t fs_fat_write(void *h, void *buf, size_t cnt)
     // Check that the fd is valid 
     if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
         mutex_unlock(&fat_mutex);
-        errno = EINVAL;
+        errno = EBADF;
         return -1;
     }
     
@@ -296,7 +304,7 @@ static off_t fs_fat_seek(void *h, off_t offset, int whence) {
 
         default:
             mutex_unlock(&fat_mutex);
-			errno = EINVAL;
+	    errno = EINVAL;
             return -1;
     }
 
@@ -315,7 +323,7 @@ static off_t fs_fat_tell(void *h) {
     file_t fd = ((file_t)h) - 1;
     off_t rv;
 
-	printf("Tell Function Called\n");
+    printf("Tell Function Called\n");
     
     mutex_lock(&fat_mutex);
 
@@ -450,18 +458,32 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 
 static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn, int mode)
 {
+    int loc[2];
+    fat_dir_entry_t entry;
     char *ufn = (char *)malloc(strlen(fn)+4); // 4:  3 for "/sd" and 1 for null character
     fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
     node_entry_t *found = NULL;
 	
-	printf("In mkdir function!!!! Folder trying to create: %s \n", fn);
+    printf("In mkdir function!!!! Folder trying to create: %s \n", fn);
 
     memset(ufn, 0, strlen(fn)+4);    // 4:  3 for "/sd" and 1 for null character
 
     strcat(ufn, "/sd");
     strcat(ufn, fn);
 
-    /* Find the object in question */
+    /* Make sure there is a filename given */
+    if(!fn) {
+        errno = ENOENT;
+        return -1;
+    }
+
+    /* Make sure the fs is writable */
+    if(!(mnt->mount_flags & FS_FAT_MOUNT_READWRITE)) {
+        errno = EROFS;
+        return -1;
+    }
+
+    /* Make sure the folder doesnt already exist */
     found = fat_search_by_path(mnt->fs->root, ufn);
 
     /* Handle a few errors */
@@ -470,15 +492,41 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn, int mode)
         return -1;
     }
 	
-	found = create_entry(mnt->fs, mnt->fs->root, ufn, DIRECTORY);
-         
-	if(found == NULL)
-		return -1;
+    found = create_entry(mnt->fs, mnt->fs->root, ufn, DIRECTORY);
+ 
+    if(found == NULL)
+	return -1;
 
-	if(found->Parent->Parent != NULL) // Update parent directories(access[change] time/date)
-		update_fat_entry(mnt->fs, found->Parent);
+    /* Add '.' folder entry */ 
+    strncpy(entry.FileName, ".       ", 8);
+    entry.FileName[8] = '\0';
+    strncpy(entry.Ext, "   ", 3 ); 
+    entry.Ext[3] = '\0';
+    entry.Attr = DIRECTORY;
+    entry.FileSize = 0;   
+    entry.FstClusLO = found->Data_Clusters->Cluster_Num;
+    loc[0] = mnt->fs->data_sec_loc + (entry.FstClusLO - 2) * mnt->fs->boot_sector.sectors_per_cluster;
+    loc[1] = 0;
+    write_entry(mnt->fs, &entry, DIRECTORY, loc);
 
-	return 0;
+    /* Add '..' folder entry */
+    strncpy(entry.FileName, "..      ", 8);
+    entry.FileName[8] = '\0';
+    strncpy(entry.Ext, "   ", 3 ); 
+    entry.Ext[3] = '\0';
+    entry.Attr = DIRECTORY;
+    entry.FileSize = 0;   
+    if(found->Parent->Parent == NULL) // If parent of this folder is the root directory, set first cluster number to 0
+        entry.FstClusLO = 0;
+    else 
+        entry.FstClusLO = found->Parent->Data_Clusters->Cluster_Num; 
+    loc[1] = 32; // loc[0] Doesnt change
+    write_entry(mnt->fs, &entry, DIRECTORY, loc);
+
+    if(found->Parent->Parent != NULL) // Update parent directories(access[change] time/date)
+	update_fat_entry(mnt->fs, found->Parent);
+
+    return 0;
 }
 
 static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
