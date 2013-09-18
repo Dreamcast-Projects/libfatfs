@@ -11,11 +11,11 @@
 #include "fat_defs.h"
 
 /* 'str' is the string you want to remove characters 'c' from */
-char *remove_all_chars(const char* str, unsigned char c) {
-	char *copy = malloc(strlen(str)+1);
+char *remove_all_chars(const unsigned char* str, unsigned char c) {
+	unsigned char *copy = malloc(strlen(str)+1);
 	strcpy(copy,str);
-    	char *pr = copy;
-	char *pw = copy;
+    unsigned char *pr = copy;
+	unsigned char *pw = copy;
     	while (*pr) {
         	*pw = *pr++;
         	pw += (*pw != c);
@@ -150,15 +150,11 @@ char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char att
 	char *ext = malloc(4);      
 	char *fn_final;
 	
-	// 1. Remove all spaces. For example "My File" becomes "MyFile".
+	/* 1. Remove all spaces. For example "My File" becomes "MyFile". */
 	copy = remove_all_chars(fn, ' ');
 	
-	//printf("Remove Spaces: %s\n", copy);
-	
-	// 3. Translate all illegal 8.3 characters( : + , ; = [ ] ) into "_" (underscore). For example, "The[First]Folder" becomes "The_First_Folder".
+	/* 3. Translate all illegal 8.3 characters( : + , ; = [ ] ) into "_" (underscore). For example, "The[First]Folder" becomes "The_First_Folder". */
 	replace_all_chars(&copy, ":+,;=[]", '_');
-	
-	//printf("Translate illegal Characters: %s\n", copy);
 
 	/* 2. Initial periods, trailing periods, and extra periods prior to the last embedded period are removed.
 	For example ".logon" becomes "logon", "junk.c.o" becomes "junkc.o", and "main." becomes "main". */
@@ -188,17 +184,12 @@ char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char att
 		temp2 = strtok(NULL, ".");
 	}
 	
-	//printf("Before Padding Filename: %s Extension: %s \n", filename, ext);
-	
-	// Pad with spaces if need be
-	while(strlen(filename) < 8) // Append spaces to fill end
+	/* Pad with spaces if need be */
+	while(strlen(filename) < 8) /* Append spaces to fill end */
 		strcat(filename, " ");
 		
 	while(strlen(ext) < 3)
 		strcat(ext, " ");
-	
-	
-	//printf("After Padding Filename: %s Extension: %s \n", filename, ext);
 
 /*
 4. If the name does not contain an extension then truncate it to 6 characters. If the names does contain
@@ -281,6 +272,15 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 10.EXE", "FILEN-11.EXE", etc.
 */
 
+	if(contains_lowercase(fn_temp))
+	{
+		unsigned int i;
+		*lfn = 1; // This needs a long file name entry
+		
+		for(i = 0; i < strlen(fn_temp); i++)
+			fn_temp[i] = toupper((int)fn_temp[i]);
+	}
+
 	while(isChildof(curdir, fn_temp) != NULL) // Should not have the same name of any other file/folder in this current directory
 	{
 		if(diff > 99999)
@@ -308,7 +308,14 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 		
 		fn_temp = temp1; // Contains the filename and ext	
 		
-		//printf("Do over - Filename: %s\n", fn_temp);
+		if(contains_lowercase(fn_temp))
+		{
+			unsigned int i;
+			*lfn = 1; // This needs a long file name entry
+			
+			for(i = 0; i < strlen(fn_temp); i++)
+				fn_temp[i] = toupper((int)fn_temp[i]);
+		}
 	}
 	
 	// Short Entry Name is unique. Now to copy it to its final string so it can fit nice and snug.
@@ -316,24 +323,18 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 	memset(fn_final, 0, strlen(fn_temp)+1);
 	strncpy(fn_final, fn_temp, strlen(fn_temp));
 	fn_final[strlen(fn_temp)] = '\0';
-	
-	if(contains_lowercase(fn_final))
-	{
-		unsigned int i;
-		*lfn = 1; // This needs a long file name entry
-		
-		for(i = 0; i < strlen(fn_final); i++)
-			fn_final[i] = toupper((int)fn_final[i]);
-	}
-	
-	//printf("Final Version - Filename: %s\n", fn_final);
 
 	// Free memory
+	printf("free temp1\n");
 	free(temp1);
+	printf("free copy\n");
 	free(copy);
 	
+	printf("free filename\n");
 	free(filename);
+	printf("free ext\n");
 	free(ext);
+	printf("free integer_string\n");
 	free(integer_string);
 	
 	return fn_final;
@@ -341,17 +342,23 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 
 fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum, unsigned char order)
 {
+	int i;
 	char *fill = malloc(1);
-	char *filename = malloc(13); // 
+	unsigned char *filename = malloc(13); // 
 	fat_lfn_entry_t *lfn_entry = malloc(sizeof(fat_lfn_entry_t));
 	
 	strncpy(filename,fn, 13);
 	
 	sprintf(fill, "%c", 0xFF);
 	
-	while(strlen(filename) < 13)  // Pad with 0xFF if need be (means we are on the last entry)
+	if(strlen(filename) < 13)
 	{
-		strcat(filename, fill);
+		filename[strlen(filename)] = '\0';
+		
+		for(i = strlen(filename)+1; i < 13; i++)
+		{
+			filename[i] = 0xFF;
+		}
 	}
 
 	lfn_entry->Order = order;
@@ -359,26 +366,26 @@ fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum,
 	lfn_entry->Cluster = 0;
 	
 	/* Part One */
-	lfn_entry->FNPart1[0] = filename[0];
-	lfn_entry->FNPart1[1] = filename[1];
-	lfn_entry->FNPart1[2] = filename[2];
-	lfn_entry->FNPart1[3] = filename[3];
-	lfn_entry->FNPart1[4] = filename[4];
-	lfn_entry->FNPart1[5] = '\0';
+	lfn_entry->FNPart1[0] = (filename[0] == 0xFF) ? 0xFFFF : filename[0];
+	lfn_entry->FNPart1[1] = (filename[1] == 0xFF) ? 0xFFFF : filename[1];
+	lfn_entry->FNPart1[2] = (filename[2] == 0xFF) ? 0xFFFF : filename[2];
+	lfn_entry->FNPart1[3] = (filename[3] == 0xFF) ? 0xFFFF : filename[3];
+	lfn_entry->FNPart1[4] = (filename[4] == 0xFF) ? 0xFFFF : filename[4];
+	/*lfn_entry->FNPart1[5] = '\0';*/
 	
 	/* Part Two */
-	lfn_entry->FNPart2[0] = filename[5];
-	lfn_entry->FNPart2[1] = filename[6];
-	lfn_entry->FNPart2[2] = filename[7];
-	lfn_entry->FNPart2[3] = filename[8];
-	lfn_entry->FNPart2[4] = filename[9];
-	lfn_entry->FNPart2[5] = filename[10];
-	lfn_entry->FNPart2[6] = '\0';
+	lfn_entry->FNPart2[0] = (filename[5] == 0xFF) ? 0xFFFF : filename[5];
+	lfn_entry->FNPart2[1] = (filename[6] == 0xFF) ? 0xFFFF : filename[6];
+	lfn_entry->FNPart2[2] = (filename[7] == 0xFF) ? 0xFFFF : filename[7];
+	lfn_entry->FNPart2[3] = (filename[8] == 0xFF) ? 0xFFFF : filename[8];
+	lfn_entry->FNPart2[4] = (filename[9] == 0xFF) ? 0xFFFF : filename[9];
+	lfn_entry->FNPart2[5] = (filename[10] == 0xFF) ? 0xFFFF : filename[10];
+	/*lfn_entry->FNPart2[6] = '\0';*/
 	
 	/* Part 3 */
-	lfn_entry->FNPart3[0] = filename[11];
-	lfn_entry->FNPart3[1] = filename[12];
-	lfn_entry->FNPart3[2] = '\0';
+	lfn_entry->FNPart3[0] = (filename[11] == 0xFF) ? 0xFFFF : filename[11];
+	lfn_entry->FNPart3[1] = (filename[12] == 0xFF) ? 0xFFFF : filename[12];
+	/*lfn_entry->FNPart3[2] = '\0'; */
 	
 	lfn_entry->Attr = 0xF; // Specifying it is a long name entry (Gets over written by setting null)
 	
@@ -489,7 +496,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	int sector_loc;
 	int ptr_loc;
 	int *locations = malloc(sizeof(int)*2);
-	uint8_t sector[512]; // Each sector is 512 bytes long
+	uint8_t sector[512]; /* Each sector is 512 bytes long */
 	cluster_node_t    *cur_cluster = curdir->Data_Clusters;
 	
 	locations[0] = -1;

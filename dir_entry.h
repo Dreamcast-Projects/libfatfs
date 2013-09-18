@@ -51,14 +51,14 @@ struct fat_long_fn_dir_entry
 	                               The specification says that the last entry value(Order) will be ORed with 0x40(01000000) and it is the mark for last entry
 								   0x80 is marked when LFN entry is deleted
 								*/
-	unsigned short FNPart1[6];  /* The first 5, 2-byte characters of this entry. */
+	unsigned short FNPart1[5];  /* The first 5, 2-byte characters of this entry. */
 	unsigned char Attr;         /* Should only have the value 0x0F (Specifying that it is a long name entry and not an actual file entry) */
 	unsigned char Res;          /* Reserved */
 	unsigned char Checksum;     /* Checksum */
 	unsigned short FNPart2[6];  /* The next 6, 2-byte characters of this entry. */
 	unsigned short Cluster;     /* Unused. Always 0 */
-	unsigned short FNPart3[3];   /* The final 2, 2-byte characters of this entry. */
-};
+	unsigned short FNPart3[2];   /* The final 2, 2-byte characters of this entry. */
+} __attribute__((packed));
 
 typedef struct fat_dir_entry fat_dir_entry_t;
 
@@ -146,7 +146,7 @@ node_entry_t *fat_search_by_path(node_entry_t *dir, const char *fn);
 void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, unsigned char *fat_table);
 
 
-node_entry_t *isChildof(node_entry_t *children, char *child_name);
+node_entry_t *isChildof(node_entry_t *children, unsigned char *child_name);
 
 __END_DECLS
 #endif /* _FAT_DIR_ENTRY_H_ */

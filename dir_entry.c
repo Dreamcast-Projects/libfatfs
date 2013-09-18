@@ -10,34 +10,34 @@
 
 #include "dir_entry.h"
 
-char * ExtractLongName(fat_lfn_entry_t *lfn) 
+unsigned char * ExtractLongName(fat_lfn_entry_t *lfn) 
 {
 	int i;
 	char c;
-	char temp[2];
-	char *buf = (char *)malloc(sizeof(char)*13);
+	unsigned char temp[2];
+	unsigned char *buf = malloc(sizeof(unsigned char)*13);
 	
-	memset(temp, 0, sizeof(char)*2);
-	memset(buf, 0, sizeof(char)*13);
+	memset(temp, 0, sizeof(unsigned char)*2);
+	memset(buf, 0, sizeof(unsigned char)*13);
 	
 	/* Get first five ascii */
 	for(i = 0; i < 5; i++) 
 	{
-		temp[0] = (char)lfn->FNPart1[i];
+		temp[0] = (unsigned char)lfn->FNPart1[i];
 		strcat(buf, temp);
 	}
 	
 	/* Next six ascii */
 	for(i = 0; i < 6; i++) 
 	{
-		temp[0] = (char)lfn->FNPart2[i];
+		temp[0] = (unsigned char)lfn->FNPart2[i];
 		strcat(buf, temp);
 	}
 	
 	/* Last two ascii */
 	for(i = 0; i < 2; i++) 
 	{
-		temp[0] = (char)lfn->FNPart3[i];
+		temp[0] = (unsigned char)lfn->FNPart3[i];
 		strcat(buf, temp);
 	}
 	
@@ -80,15 +80,15 @@ cluster_node_t * GetClusterList(const unsigned char *table, int start_cluster)
 	return start;
 }
 
-node_entry_t *isChildof(node_entry_t *parent, char *child_name) {
+node_entry_t *isChildof(node_entry_t *parent, unsigned char *child_name) {
     node_entry_t *child = parent->Children;
 	
 	while(child != NULL) 
 	{
-	    if(strcmp((const char *)child->Name, child_name) == 0) {
+	    if(strcmp(child->Name, child_name) == 0) {
 		    return child;
 		}
-		else if(strcmp((const char *)child->ShortName, child_name) == 0)
+		else if(strcmp(child->ShortName, child_name) == 0)
 		{
 			return child;
 		}
@@ -119,7 +119,7 @@ node_entry_t *fat_search_by_path(node_entry_t *root, const char *fn)
 
     pch = strtok(ufn,"/");
 	
-    if(strcmp(pch, (const char*)target->Name) == 0) {
+    if(strcmp(pch, target->Name) == 0) {
             pch = strtok (NULL, "/");
 
             if(pch != NULL) {
@@ -130,7 +130,7 @@ node_entry_t *fat_search_by_path(node_entry_t *root, const char *fn)
                     if((target = isChildof(child, pch))) 
                     {
                             pch = strtok (NULL, "/");
-                            printf("Next: %s\n", pch);
+                            /* printf("Next: %s\n", pch); */
                             if(pch != NULL) {
                                     child = target->Children;
                             }
@@ -156,9 +156,9 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 	int var = 0;
 	int new_sector_loc = 0;
 	
-	unsigned char *buf = (unsigned char *)malloc(sizeof(unsigned char)*512);
-	unsigned char *lfnbuf1 = (unsigned char *)malloc(sizeof(unsigned char)*255); /* Longest a filename can be is 255 chars */
-	unsigned char *lfnbuf2 = (unsigned char *)malloc(sizeof(unsigned char)*255); /* Longest a filename can be is 255 chars */
+	unsigned char *buf = malloc(sizeof(unsigned char)*512);
+	unsigned char *lfnbuf1 = malloc(sizeof(unsigned char)*255); /* Longest a filename can be is 255 chars */
+	unsigned char *lfnbuf2 = malloc(sizeof(unsigned char)*255); /* Longest a filename can be is 255 chars */
 	
 	fat_lfn_entry_t lfn;
 	fat_dir_entry_t temp;
@@ -172,7 +172,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 	/* Read 1 sector */
 	fat->dev->read_blocks(fat->dev, sector_loc, 1, buf);
 	
-	for(i = 0; i < 16; i++) /* How many entries per sector(512 bytes) */
+	for(i = 0; i < 16; i++) /* How many entries per sector(32 byte entry x 16 = 512 bytes) */
 	{
 		/* Entry does not exist if it has been deleted(0xE5) or is an empty entry(0) */
 		if((buf+var)[0] == DELETED || (buf+var)[0] == EMPTY) 
@@ -188,17 +188,19 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 		
 			if(lfnbuf1[0] == '\0') 
 			{
-				strcpy((char *)lfnbuf1, ExtractLongName(&lfn));
+				strcpy(lfnbuf1, ExtractLongName(&lfn));
+				
 				if(lfnbuf2[0] != '\0') {
-				    strcat((char *)lfnbuf1, (const char *)lfnbuf2);
+				    strcat(lfnbuf1, lfnbuf2);
 					memset(lfnbuf2, 0, sizeof(lfnbuf2));
 				}
 			}
 			else if(lfnbuf2[0] == '\0')
 			{
-				strcpy((char *)lfnbuf2, ExtractLongName(&lfn));
+				strcpy(lfnbuf2, ExtractLongName(&lfn));
+				
 				if(lfnbuf1[0] != '\0') {
-				    strcat((char *)lfnbuf2, (const char *)lfnbuf1);
+				    strcat(lfnbuf2, lfnbuf1);
 					memset(lfnbuf1, 0, sizeof(lfnbuf1));
 				}
 			}
@@ -207,7 +209,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 		}
 		/* Its a file/folder entry */
 		else {
-			new_entry = (node_entry_t *)malloc(sizeof(node_entry_t));
+			new_entry = malloc(sizeof(node_entry_t));
 		
 			memset(&temp, 0, sizeof(fat_dir_entry_t));	
 			
@@ -223,54 +225,54 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, 
 			/* Deal with no long name */
 			if(lfnbuf1[0] == '\0' && lfnbuf2[0] == '\0')
 			{
-                                strcat((char *)lfnbuf1, (const char *)temp.FileName);
+                strcat(lfnbuf1, temp.FileName);
 				if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
 					if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
-						strcat((char *)lfnbuf1, (const char *)temp.Ext);
+						strcat(lfnbuf1, temp.Ext);
 					}
 					else {
-						strcat((char *)lfnbuf1, ".");
-						strcat((char *)lfnbuf1, (const char *)temp.Ext);
+						strcat(lfnbuf1, ".");
+						strcat(lfnbuf1, temp.Ext);
 					}
 				}
-				lfnbuf1 = (unsigned char*)remove_all_chars((const char*)lfnbuf1,' '); 
-				new_entry->Name = malloc(strlen((const char *)lfnbuf1));
-				new_entry->ShortName = malloc(strlen((const char *)lfnbuf1));
-				strcpy((char *)new_entry->Name, (const char *)lfnbuf1);
-				strcpy((char *)new_entry->ShortName, (const char *)lfnbuf1);  
+				lfnbuf1 = remove_all_chars(lfnbuf1,' '); 
+				new_entry->Name = malloc(strlen(lfnbuf1));
+				new_entry->ShortName = malloc(strlen(lfnbuf1));
+				strcpy(new_entry->Name, lfnbuf1);
+				strcpy(new_entry->ShortName, lfnbuf1);  
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
 				/* printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName); */
 			}
 			else if(lfnbuf1[0] != '\0')
 			{
-                                strcat((char *)lfnbuf2, (const char *)temp.FileName);
+                strcat(lfnbuf2, temp.FileName);
 				if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
 					if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
-						strcat((char *)lfnbuf2, (const char *)temp.Ext);
+						strcat(lfnbuf2, temp.Ext);
 					}
 					else {
-						strcat((char *)lfnbuf2, ".");
-						strcat((char *)lfnbuf2, (const char *)temp.Ext);
+						strcat(lfnbuf2, ".");
+						strcat(lfnbuf2, temp.Ext);
 					}
 				}
 				
-				new_entry->Name = malloc(strlen((const char *)lfnbuf1));
-				new_entry->ShortName = malloc(strlen((const char *)lfnbuf2));
-				strcpy((char *)new_entry->Name, (const char *)lfnbuf1);
-				strcpy((char *)new_entry->ShortName, (const char *)lfnbuf2);  
+				new_entry->Name = malloc(strlen(lfnbuf1));
+				new_entry->ShortName = malloc(strlen(lfnbuf2));
+				strcpy(new_entry->Name, lfnbuf1);
+				strcpy(new_entry->ShortName, lfnbuf2);  
 				memset(lfnbuf1, 0, sizeof(lfnbuf1));
 				memset(lfnbuf2, 0, sizeof(lfnbuf1));
 				/* printf("FullName: \"%s\" Shortname: %s\n", new_entry->Name, new_entry->ShortName); */
 			}
 			else {
-				strcat((char *)lfnbuf1, (const char *)temp.FileName);
+				strcat(lfnbuf1, temp.FileName);
 				if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
 					if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
-						strcat((char *)lfnbuf1, temp.Ext);
+						strcat(lfnbuf1, temp.Ext);
 					}
 					else {
-						strcat((char *)lfnbuf1, ".");
-						strcat((char *)lfnbuf1, temp.Ext);
+						strcat(lfnbuf1, ".");
+						strcat(lfnbuf1, temp.Ext);
 					}
 				}
 				
@@ -600,7 +602,7 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
 		printf("Cluster num value found: %d\n", cluster_num);
         
         /* If we found a free entry */
-        if(cluster_num == 0xFFFF0000)
+        if(cluster_num == 0x00) //0xFFFF0000)
         {
             printf("Found a free cluster entry -- Index: %d\n", fat_index);
 		

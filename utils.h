@@ -10,7 +10,7 @@
 
 #include "dir_entry.h"
 
-char *remove_all_chars(const char* str, unsigned char c);
+char *remove_all_chars(const unsigned char* str, unsigned char c);
 void replace_all_chars(char **str, const char* replace_chars, unsigned char replace_with);
 char *trimwhitespace(char *str);
 int correct_filename(const char* str);

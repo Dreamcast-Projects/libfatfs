@@ -86,8 +86,8 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     }
     else if(found != NULL && (found->Attr & READ_ONLY) && ((mode & O_WRONLY) || (mode & O_RDWR))) 
     {
-	errno = EROFS;
-	return NULL;
+		errno = EROFS;
+		return NULL;
     }
     
     /* Set filesize to 0 if we set mode to O_TRUNC */
