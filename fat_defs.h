@@ -10,9 +10,13 @@ __BEGIN_DECLS
 #include "dir_entry.h"
 #include "boot_sector.h"
 
+#define FAT16 0
+#define FAT32 1
 
 #define FAT16TYPE1 0x04  /* 32MB */
 #define FAT16TYPE2 0x06  /* Over 32 to 2GB */ 
+#define FAT32TYPE1 0x0B  /*  */
+#define FAT32TYPE2 0x0C  /*  */
 
 /* typedef struct fatfs fatfs_t; */
 
@@ -22,7 +26,9 @@ struct fatfs
     fat_BS_t         boot_sector;
 
     /* Filesystem globals */ 
-    unsigned short   root_dir_sectors_num;     /* The number of sectors the root directory consists of */
+	unsigned short   fat_type;                 /* 0 - Fat16, 1 - Fat32 */
+	unsigned short   table_size;               /* */
+    unsigned short   root_dir_sectors_num;     /* The number of sectors the root directory consists of. Should be zero for Fat32 */
     unsigned short   root_dir_sec_loc;         /* The first sector where the root directory starts */
     unsigned short   file_alloc_tab_sec_loc;   /* The first sector where the fat allocation table starts */
     unsigned short   data_sec_loc;             /* The first sector where the data starts(Location of cluster 2) */

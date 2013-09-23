@@ -107,7 +107,7 @@ struct fat_dir_entry
 
 /* Used to make a linked list of clusters that make up a file/folder. Used so we dont have to keep checking the FAT. */
 typedef struct cluster_node {
-    unsigned short Cluster_Num;
+    unsigned int Cluster_Num;
     struct cluster_node *Next;
 } cluster_node_t;
 
@@ -143,10 +143,11 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file);
 int fat_write_data(fatfs_t *fat, node_entry_t *file, uint8_t *bbuf, int count, int ptr);
 uint8_t *fat_read_data(fatfs_t *fat, node_entry_t *file, int cnt, int ptr);
 node_entry_t *fat_search_by_path(node_entry_t *dir, const char *fn);
-void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc, unsigned char *fat_table);
+void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc);
 
 
-node_entry_t *isChildof(node_entry_t *children, unsigned char *child_name);
+node_entry_t *get_child_of_parent(node_entry_t *children, unsigned char *child_name);
+cluster_node_t * build_cluster_linklist(fatfs_t *fat, int start_cluster);
 
 __END_DECLS
 #endif /* _FAT_DIR_ENTRY_H_ */

@@ -164,8 +164,18 @@ char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char att
 	strncpy(filename, strtok(copy, "."), strlen(fn)); // Copy Filename
 	filename[strlen(fn)] = '\0';
 	
-	strncpy(ext, strtok(NULL, "."), 3);      // Copy Extension
-	ext[3] = '\0';
+	temp2 = strtok(NULL, ".");
+	
+	if(temp2 == NULL) // No periods in name at all
+	{
+		strncpy(ext, "   ", 3);
+		ext[3] = '\0';
+	} 
+	else
+	{
+		strncpy(ext, temp2, 3);      // Copy Extension
+		ext[3] = '\0';
+	}
 	
 	temp2 = strtok(NULL, ".");
 	
@@ -243,13 +253,15 @@ always added to help reduce the conflicts in the 8.3 name space for automatic ge
 		memset(temp1, 0, strlen(fn)+1);
 		strcat(temp1, filename);
 		
+		
 		if(attr == DIRECTORY && ext[0] != ' ')
 		{
 			// Append the Value
-			memset(integer_string, 0, 7);
-			sprintf(integer_string, "~%d", diff++); // Increment diff here for maybe future use
-			strcat(temp1, integer_string);
+			//memset(integer_string, 0, 7);
+			//sprintf(integer_string, "~%d", diff++); // Increment diff here for maybe future use
+			//strcat(temp1, integer_string);
 		}
+		
 		
 		// Append the period
 		strcat(temp1, ".");
@@ -281,7 +293,7 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 			fn_temp[i] = toupper((int)fn_temp[i]);
 	}
 
-	while(isChildof(curdir, fn_temp) != NULL) // Should not have the same name of any other file/folder in this current directory
+	while(get_child_of_parent(curdir, fn_temp) != NULL) // Should not have the same name of any other file/folder in this current directory
 	{
 		if(diff > 99999)
 		{
@@ -371,7 +383,6 @@ fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum,
 	lfn_entry->FNPart1[2] = (filename[2] == 0xFF) ? 0xFFFF : filename[2];
 	lfn_entry->FNPart1[3] = (filename[3] == 0xFF) ? 0xFFFF : filename[3];
 	lfn_entry->FNPart1[4] = (filename[4] == 0xFF) ? 0xFFFF : filename[4];
-	/*lfn_entry->FNPart1[5] = '\0';*/
 	
 	/* Part Two */
 	lfn_entry->FNPart2[0] = (filename[5] == 0xFF) ? 0xFFFF : filename[5];
@@ -380,17 +391,13 @@ fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum,
 	lfn_entry->FNPart2[3] = (filename[8] == 0xFF) ? 0xFFFF : filename[8];
 	lfn_entry->FNPart2[4] = (filename[9] == 0xFF) ? 0xFFFF : filename[9];
 	lfn_entry->FNPart2[5] = (filename[10] == 0xFF) ? 0xFFFF : filename[10];
-	/*lfn_entry->FNPart2[6] = '\0';*/
 	
 	/* Part 3 */
 	lfn_entry->FNPart3[0] = (filename[11] == 0xFF) ? 0xFFFF : filename[11];
 	lfn_entry->FNPart3[1] = (filename[12] == 0xFF) ? 0xFFFF : filename[12];
-	/*lfn_entry->FNPart3[2] = '\0'; */
 	
-	lfn_entry->Attr = 0xF; // Specifying it is a long name entry (Gets over written by setting null)
-	
-	/* printf("Generate Long Filename Entry -- Order: %d Part1: %s, Part2: %s, Part3: %s Attr: %d %x \n", order, lfn_entry->FNPart1, lfn_entry->FNPart2, lfn_entry->FNPart3, lfn_entry->Attr); */
-	
+	lfn_entry->Attr = 0xF; /* Specifying it is a long name entry */
+
 	free(filename);
 	
 	return lfn_entry;

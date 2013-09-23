@@ -72,7 +72,6 @@ typedef struct fat_BS
  
 }__attribute__((packed)) fat_BS_t;
 
-
 int fat_read_bootsector __P((fat_BS_t *bs, kos_blockdev_t *bd));
 
 #ifdef FAT2FS_DEBUG

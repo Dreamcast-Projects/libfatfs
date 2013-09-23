@@ -12,8 +12,8 @@ __BEGIN_DECLS
 fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd);
 void fat_fs_shutdown(fatfs_t  *fs);
 
-void read_fat_table(fatfs_t *fat, unsigned char **table); 
-void write_fat_table(fatfs_t *fat, unsigned char *table); 
+unsigned int read_fat_table_value(fatfs_t *fat, int byte_index);
+void write_fat_table_value(fatfs_t *fat, int byte_index, int value); 
 
 __END_DECLS
 

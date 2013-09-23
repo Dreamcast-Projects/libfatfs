@@ -147,17 +147,17 @@ static int fs_fat_close(void * h) {
     if(fd < MAX_FAT_FILES && fh[fd].mode) {
         fh[fd].used = 0;
         fh[fd].ptr = 0;
+		fh[fd].mode = 0;
 
         /* If it was open for writing make sure to update entry on SD card
            Change file size
            Change time
-        */
+        
         if(fh[fd].mode & O_WRONLY || fh[fd].mode & O_RDWR)
         {
             update_fat_entry(fh[fd].mnt->fs, fh[fd].node);
-	}
-		
-	fh[fd].mode = 0;
+		}
+		*/
     }
 
     mutex_unlock(&fat_mutex);
@@ -270,8 +270,8 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
     fh[fd].ptr += cnt;
     fh[fd].node->FileSize = (fh[fd].ptr > fh[fd].node->FileSize) ? fh[fd].ptr : fh[fd].node->FileSize; /* Increase the file size if need be(which ever is bigger) */
 
-    /* Write it to the FAT
-    update_fat_entry(fs, fh[fd].node);*/
+    /* Write it to the FAT */
+    update_fat_entry(fs, fh[fd].node);
 
     mutex_unlock(&fat_mutex);
 
@@ -409,11 +409,19 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 	int i;
 	node_entry_t *f = NULL;
 	fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
+	char *ufn = (char *)malloc(strlen(fn)+4); /* 4:  3 for "/sd" and 1 for null character */
+	
+	memset(ufn, 0, strlen(fn)+4);    /* 4:  3 for "/sd" and 1 for null character */
+
+    strcat(ufn, "/sd");
+    strcat(ufn, fn);
 
     mutex_lock(&fat_mutex);
 
     /* Find the file */
-    f = fat_search_by_path(mnt->fs->root, fn);
+    f = fat_search_by_path(mnt->fs->root, ufn);
+	
+	free(ufn);
 
     if(f) {
         /* Make sure it's not in use */
@@ -422,6 +430,7 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 			if(fh[i].used == 1 && fh[i].node == f)
 			{
 				errno = EBUSY;
+				mutex_unlock(&fat_mutex);
 				return -1;
 			}
 		}
@@ -430,6 +439,7 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 		if(f->Attr & DIRECTORY)
 		{
 			errno = EISDIR;
+			mutex_unlock(&fat_mutex);
 			return -1;
 		}
 		
@@ -437,6 +447,7 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 		if(f->Attr & READ_ONLY)
 		{
 			errno = EROFS;
+			mutex_unlock(&fat_mutex);
 			return -1;
 		}
        
@@ -449,6 +460,7 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 	else /* Not found */
 	{
 		errno = ENOENT;
+		mutex_unlock(&fat_mutex);
 		return -1;
 	}
 
@@ -464,8 +476,6 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
     char *ufn = (char *)malloc(strlen(fn)+4); /* 4:  3 for "/sd" and 1 for null character */
     fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
     node_entry_t *found = NULL;
-	
-    printf("In mkdir function!!!! Folder trying to create: %s \n", fn);
 
     memset(ufn, 0, strlen(fn)+4);    /* 4:  3 for "/sd" and 1 for null character */
 
@@ -475,12 +485,14 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
     /* Make sure there is a filename given */
     if(!fn) {
         errno = ENOENT;
+		free(ufn);
         return -1;
     }
 
     /* Make sure the fs is writable */
     if(!(mnt->mount_flags & FS_FAT_MOUNT_READWRITE)) {
         errno = EROFS;
+		free(ufn);
         return -1;
     }
 
@@ -490,13 +502,17 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
     /* Handle a few errors */
     if(found != NULL) {
         errno = EEXIST;  
+		free(ufn);
         return -1;
     }
 	
     found = create_entry(mnt->fs, mnt->fs->root, ufn, DIRECTORY);
  
     if(found == NULL)
-	return -1;
+	{
+		free(ufn);
+		return -1;
+	}
 
     /* Add '.' folder entry */ 
     strncpy(entry.FileName, ".       ", 8);
@@ -525,7 +541,9 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
     write_entry(mnt->fs, &entry, DIRECTORY, loc);
 
     if(found->Parent->Parent != NULL) /* Update parent directories(access[change] time/date) */
-	update_fat_entry(mnt->fs, found->Parent);
+		update_fat_entry(mnt->fs, found->Parent);
+		
+	free(ufn);
 
     return 0;
 }
@@ -534,12 +552,20 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 {
 	int i;
 	node_entry_t *f = NULL;
+	char *ufn = (char *)malloc(strlen(fn)+4); /* 4:  3 for "/sd" and 1 for null character */
 	fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
+	
+	memset(ufn, 0, strlen(fn)+4);    /* 4:  3 for "/sd" and 1 for null character */
+
+    strcat(ufn, "/sd");
+    strcat(ufn, fn);
 
     mutex_lock(&fat_mutex);
 
     /* Find the folder */
-    f = fat_search_by_path(mnt->fs->root, fn);
+    f = fat_search_by_path(mnt->fs->root, ufn);
+	
+	free(ufn);
 
     if(f) {
         /* Make sure it's not in use */
@@ -548,6 +574,8 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 			if(fh[i].used == 1 && fh[i].node == f)
 			{
 				errno = EBUSY;
+				printf("Folder in use\n");
+				mutex_unlock(&fat_mutex);
 				return -1;
 			}
 		}
@@ -556,6 +584,8 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 		if(f->Attr & ARCHIVE)
 		{
 			errno = ENOTDIR;
+			printf("Trying to rmdir a file\n");
+			mutex_unlock(&fat_mutex);
 			return -1;
 		}
 		
@@ -563,13 +593,17 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 		if(f->Attr & READ_ONLY)
 		{
 			errno = EROFS;
+			printf("Read only folder\n");
+			mutex_unlock(&fat_mutex);
 			return -1;
 		}
 		
 		/* Make sure this folder has no contents(children) */
-       if(f->Children != NULL)
+       if(f->Children->Next->Next != NULL) /* Skip over . and .. folder entries */
 	   {
 			errno = ENOTEMPTY;
+			printf("This folder is not empty\n");
+			mutex_unlock(&fat_mutex);
 			return -1;
 	   }
 	   
@@ -582,13 +616,14 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 	else /* Not found */
 	{
 		errno = ENOENT;
+		printf("Folder not found\n");
+		mutex_unlock(&fat_mutex);
 		return -1;
 	}
 
     mutex_unlock(&fat_mutex);
-    
+	
 	return 0;
-
 }
 
 /*
@@ -869,4 +904,16 @@ int fs_fat_shutdown(void) {
     initted = 0;
 
     return 0;
+}
+
+int fat_partition(uint8 partition_type)
+{
+	if(partition_type == FAT16TYPE1
+	|| partition_type == FAT16TYPE2
+	|| partition_type == FAT32TYPE1
+	|| partition_type == FAT32TYPE2 
+	)
+		return 1;
+		
+	return 0;
 }
