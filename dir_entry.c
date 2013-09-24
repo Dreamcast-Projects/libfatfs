@@ -372,8 +372,8 @@ unsigned char *fat_read_data(fatfs_t *fat, node_entry_t *file, int count, int po
 		/* Set to first cluster */
 		node = file->Data_Clusters; 
 
-		/* Start at 1 because we set to first cluster above. Advance to the cluster we want to read from. */
-		for(i = 1; i <= clusterNodeNum; i++) 
+		/* Advance to the cluster we want to read from. */
+		for(i = 0; i < clusterNodeNum; i++) 
 		{
 			node = node->Next;
 		}
@@ -446,8 +446,8 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 		}
 		else
 		{
-			/* Start at 1 because we set to first cluster above. Advance to the cluster we want to write to */
-			for(i = 1; i <= clusterNodeNum; i++) 
+			/* Advance to the cluster we want to write to */
+			for(i = 0; i < clusterNodeNum; i++) 
 			{
 				/* Check if node->Next equals NULL. If it does then allocate another cluster for this file and break */
 				if(node->Next == NULL)
@@ -621,12 +621,12 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
         /* memcpy(&cluster_num, &fat_table[fat_index*byte_offset], byte_offset); */
 		cluster_num = read_fat_table_value(fat, fat_index*byte_offset);
 		
-		printf("Cluster num value found: %x\n", cluster_num);
+		/*printf("Cluster num value found: %x\n", cluster_num); */
         
         /* If we found a free entry */
         if(cluster_num == 0x00) 
         {
-            printf("Found a free cluster entry -- Index: %d\n", fat_index);
+            /*printf("Found a free cluster entry -- Index: %d\n", fat_index); */
 		
             cluster_num = marker;
             if(cluster != NULL) /* Cant change what doesnt exist */
