@@ -140,8 +140,8 @@ void delete_cluster_list(fatfs_t *fat, node_entry_t *file);
 void delete_tree_entry(node_entry_t * node);
 void delete_directory_tree(node_entry_t * node);
 void update_fat_entry(fatfs_t *fat, node_entry_t *file);
-int fat_write_data(fatfs_t *fat, node_entry_t *file, uint8_t *bbuf, int count, int ptr);
-uint8_t *fat_read_data(fatfs_t *fat, node_entry_t *file, int cnt, int ptr);
+int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int count, int ptr);
+unsigned char *fat_read_data(fatfs_t *fat, node_entry_t *file, int cnt, int ptr);
 node_entry_t *fat_search_by_path(node_entry_t *dir, const char *fn);
 void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc);
 

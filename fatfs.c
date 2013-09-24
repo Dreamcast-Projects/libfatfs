@@ -30,7 +30,7 @@ unsigned int read_fat_table_value(fatfs_t *fat, int byte_index)
 	{
 		sector_offset = byte_index / fat->boot_sector.bytes_per_sector;
 	
-		memset(buffer, 0, sizeof(buffer));
+		memset(buffer, 0, 512*sizeof(unsigned char));
 	
 		fat->dev->read_blocks(fat->dev, fat->file_alloc_tab_sec_loc + sector_offset, 1, buffer);
 	}
@@ -51,7 +51,7 @@ void write_fat_table_value(fatfs_t *fat, int byte_index, int value)
 	{
 		sector_offset = byte_index / fat->boot_sector.bytes_per_sector;
 	
-		memset(buffer, 0, sizeof(buffer));
+		memset(buffer, 0, 512*sizeof(unsigned char));
 	
 		fat->dev->read_blocks(fat->dev, fat->file_alloc_tab_sec_loc + sector_offset, 1, buffer);
 	}
@@ -67,7 +67,7 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
     unsigned int i;
 	
 	char c;
-	char *fmp = (char *)malloc(strlen(mp)+1);
+	char *fmp = malloc(strlen(mp)+1);
     fatfs_t *rv;
 	
 	/* For Fat32 */
@@ -183,8 +183,6 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 			node = node->Next;
 		}while(node != NULL);
 	}
-	
-	printf("Built Directory Tree\n\n");
 	
 	return rv;
 }

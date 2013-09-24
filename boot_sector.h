@@ -6,7 +6,7 @@
 #include <sys/cdefs.h>
 __BEGIN_DECLS
 
-/* #define FAT2FS_DEBUG 1 */
+#define FAT2FS_DEBUG 1
 
 #include <stdint.h>
 

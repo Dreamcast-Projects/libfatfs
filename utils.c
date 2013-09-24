@@ -25,27 +25,6 @@ char *remove_all_chars(const unsigned char* str, unsigned char c) {
 	return copy;
 }
 
-/* PRE: str must be either NULL or a pointer to a 
- * (possibly empty) null-terminated string. */
-void strrev(char *str) {
-  char temp, *end_ptr;
-
-  /* If str is NULL or empty, do nothing */
-  if( str == NULL || !(*str) )
-    return;
-
-  end_ptr = str + strlen(str) - 1;
-
-  /* Swap the chars */
-  while( end_ptr > str ) {
-    temp = *str;
-    *str = *end_ptr;
-    *end_ptr = temp;
-    str++;
-    end_ptr--;
-  }
-}
-
 /* 'replace_chars' contains characters that you want to replace with character 'replace_with' in string str */
 void replace_all_chars(char **str, const char* replace_chars, unsigned char replace_with) {
 	char *c;
@@ -63,7 +42,7 @@ void replace_all_chars(char **str, const char* replace_chars, unsigned char repl
 	}
 }
 
-/* Returns 1 if a lowercase character is found in 'str', reurns 0 otherwise */
+/* Returns 1 if a lowercase character is found in 'str', returns 0 otherwise */
 int contains_lowercase(const char *str)
 {
 	const char *c = str;
@@ -85,17 +64,17 @@ char *trimwhitespace(char *str)
 {
   char *end;
 
-  // Trim leading space
+  /* Trim leading space */
   while(isspace((int)*str)) str++;
 
-  if(*str == 0)  // All spaces?
+  if(*str == 0)  /* All spaces? */
     return str;
 
-  // Trim trailing space
+  /* Trim trailing space */
   end = str + strlen(str) - 1;
   while(end > str && isspace((int)*end)) end--;
 
-  // Write new null terminator
+  /* Write new null terminator */
   *(end+1) = 0;
 
   return str;
@@ -130,11 +109,6 @@ int correct_filename(const char* str)
    return 0;
 }
 
-char *generate_file_path()
-{
-	return NULL;
-}
-
 char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char attr, int *lfn)
 {
 	int diff = 1;
@@ -146,7 +120,7 @@ char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char att
 	char *integer_string = malloc(7); 
 	
 	char *fn_temp;
-	char *filename = malloc(sizeof(fn)+1); 
+	char *filename = malloc(strlen(fn)+1); 
 	char *ext = malloc(4);      
 	char *fn_final;
 	
@@ -161,19 +135,19 @@ char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char att
 
 	temp1 = malloc(strlen(fn)+1);
 	
-	strncpy(filename, strtok(copy, "."), strlen(fn)); // Copy Filename
+	strncpy(filename, strtok(copy, "."), strlen(fn)); /* Copy Filename */
 	filename[strlen(fn)] = '\0';
 	
 	temp2 = strtok(NULL, ".");
 	
-	if(temp2 == NULL) // No periods in name at all
+	if(temp2 == NULL) /* No periods in name at all */
 	{
-		strncpy(ext, "   ", 3);
+		strncpy(ext, "   ", 3); /* Fill ext with spaces */
 		ext[3] = '\0';
 	} 
 	else
 	{
-		strncpy(ext, temp2, 3);      // Copy Extension
+		strncpy(ext, temp2, 3); /* Copy Extension */
 		ext[3] = '\0';
 	}
 	
@@ -185,10 +159,10 @@ char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char att
 		strcat(temp1, filename);
 		strcat(temp1, ext);
 		
-		strncpy(filename, temp1, strlen(fn)); // Copy Filename
+		strncpy(filename, temp1, strlen(fn)); /* Copy into Filename */
 		filename[strlen(fn)] = '\0';
 		
-		strncpy(ext, temp2, 3);
+		strncpy(ext, temp2, 3);               /* Copy into extension */
 		ext[3] = '\0';
 		
 		temp2 = strtok(NULL, ".");
@@ -207,7 +181,7 @@ an extension, then truncate the first part to 6 characters and the extension to 
 example, "I Am A Dingbat" becomes "IAmADi" and not "IAmADing.bat", and "Super Duper
 Editor.Exe" becomes "SuperD.Exe".*/
 /*
-	// Truncate the filename to 6 chars(length)
+	Truncate the filename to 6 chars(length)
 	if(strlen(filename) > 6)
 		filename[6] = '\0';
 
@@ -226,52 +200,49 @@ always added to help reduce the conflicts in the 8.3 name space for automatic ge
 
 	if(strlen(filename) > 8)
 	{
-		// Concate the filename
+		/* Concate the filename */
 		memset(temp1, 0, strlen(fn)+1);
 		strncpy(temp1, filename, 6);
 		
-		// Append the Value
+		/* Append the Value(~#) */
 		memset(integer_string, 0, 7);
-		sprintf(integer_string, "~%d", diff++); // Increment diff here for maybe future use
+		sprintf(integer_string, "~%d", diff++); /* Increment diff here for (maybe) future use */
 		strcat(temp1, integer_string);
 		
-		// Append the period
+		/* Append the period */
 		strcat(temp1, ".");
 		
-		// Append the ext
+		/* Append the ext */
 		strcat(temp1, ext);
 		
-		fn_temp = temp1; // Contains the filename and ext
+		fn_temp = temp1; /* Contains the filename and ext */
 		
-		//printf("Getting closer - Filename: %s\n", fn_temp);
-		
-		*lfn = 1; // This needs a long file name entry
+		*lfn = 1; /* This needs a long file name entry */
 	}
 	else
 	{
-		// Append the filename
+		/* Append the filename */
 		memset(temp1, 0, strlen(fn)+1);
 		strcat(temp1, filename);
 		
 		
 		if(attr == DIRECTORY && ext[0] != ' ')
 		{
-			// Append the Value
-			//memset(integer_string, 0, 7);
-			//sprintf(integer_string, "~%d", diff++); // Increment diff here for maybe future use
-			//strcat(temp1, integer_string);
+			/* Append the Value
+			memset(integer_string, 0, 7);
+			sprintf(integer_string, "~%d", diff++); // Increment diff here for maybe future use
+			strcat(temp1, integer_string);
+			*/
 		}
 		
 		
-		// Append the period
+		/* Append the period */
 		strcat(temp1, ".");
 		
-		// Append the ext
+		/* Append the ext */
 		strcat(temp1, ext);
 		
-		fn_temp = temp1; // Contains the filename and ext
-		
-		//printf("Getting closer - Filename: %s\n", fn_temp);
+		fn_temp = temp1; /* Contains the filename and ext */
 	}
 
 /*
@@ -284,16 +255,18 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 10.EXE", "FILEN-11.EXE", etc.
 */
 
+	/* If it contains lowercase letters, convert it into uppercase */
 	if(contains_lowercase(fn_temp))
 	{
 		unsigned int i;
-		*lfn = 1; // This needs a long file name entry
+		*lfn = 1; /* This needs a long file name entry */
 		
 		for(i = 0; i < strlen(fn_temp); i++)
 			fn_temp[i] = toupper((int)fn_temp[i]);
 	}
 
-	while(get_child_of_parent(curdir, fn_temp) != NULL) // Should not have the same name of any other file/folder in this current directory
+	/* Should not have the same name of any other file/folder in this current directory */
+	while(get_child_of_parent(curdir, fn_temp) != NULL) 
 	{
 		if(diff > 99999)
 		{
@@ -301,52 +274,48 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 			return NULL;
 		}
 		
-		// Rebuild the file name
+		/* Rebuild the file name */
 		memset(temp1, 0, strlen(fn)+1);
-		strcat(temp1, filename); // Cat six chars intro temp1
+		strcat(temp1, filename); /* Cat whole filename into temp1 */
 		
 		memset(integer_string, 0, 7);
-		sprintf(integer_string, "~%d", diff++); // Increment diff here for maybe future use
+		sprintf(integer_string, "~%d", diff++); /* Increment diff here for maybe future use */
 		
+		/* Change temp according to the strlen of strlen(integer_string) [~##] */
 		memcpy(temp1 + (8 - strlen(integer_string)), integer_string, strlen(integer_string));
 		
 		temp1[8] = '\0';
 		
-		// Append the period
+		/* Append the period */
 		strcat(temp1, ".");
 		
-		// Append the ext
+		/* Append the ext */
 		strcat(temp1, ext);
 		
-		fn_temp = temp1; // Contains the filename and ext	
+		fn_temp = temp1; /* Contains the filename and ext */
 		
+		/* If it contains lowercase letters, convert it into uppercase */
 		if(contains_lowercase(fn_temp))
 		{
 			unsigned int i;
-			*lfn = 1; // This needs a long file name entry
+			*lfn = 1; /* This needs a long file name entry */
 			
 			for(i = 0; i < strlen(fn_temp); i++)
 				fn_temp[i] = toupper((int)fn_temp[i]);
 		}
 	}
 	
-	// Short Entry Name is unique. Now to copy it to its final string so it can fit nice and snug.
+	/* Short Entry Name is unique. Now to copy it to its final string so it can fit nice and snug. */
 	fn_final = malloc(strlen(fn_temp)+1);
 	memset(fn_final, 0, strlen(fn_temp)+1);
 	strncpy(fn_final, fn_temp, strlen(fn_temp));
 	fn_final[strlen(fn_temp)] = '\0';
 
-	// Free memory
-	printf("free temp1\n");
+	/* Free memory */
 	free(temp1);
-	printf("free copy\n");
 	free(copy);
-	
-	printf("free filename\n");
 	free(filename);
-	printf("free ext\n");
 	free(ext);
-	printf("free integer_string\n");
 	free(integer_string);
 	
 	return fn_final;
@@ -355,13 +324,10 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum, unsigned char order)
 {
 	int i;
-	char *fill = malloc(1);
-	unsigned char *filename = malloc(13); // 
+	unsigned char *filename = malloc(13);
 	fat_lfn_entry_t *lfn_entry = malloc(sizeof(fat_lfn_entry_t));
 	
 	strncpy(filename,fn, 13);
-	
-	sprintf(fill, "%c", 0xFF);
 	
 	if(strlen(filename) < 13)
 	{
@@ -415,13 +381,15 @@ unsigned char generate_checksum(char * short_filename)
 	char *name;
 	unsigned char sum;
 	
-	name = remove_all_chars(short_filename, '.'); // remove the period
+	name = remove_all_chars(short_filename, '.'); /* remove the period */
 
 	for (sum = i = 0; i < 11; i++) {
 		sum = (((sum & 1) << 7) | ((sum & 0xfe) >> 1)) + name[i];
 	}
 
-	//This resulting checksum value is stored in each of the LFN entry to ensure that the short filename it points to indeed is the currently 8.3 entry it should be pointing to. 
+	/* This resulting checksum value is stored in each of the LFN entry to ensure that the short filename it 
+	points to indeed is the currently 8.3 entry it should be pointing to. 
+	*/
 
 	free(name);
 	
@@ -432,7 +400,7 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 {
 	fat_lfn_entry_t *lfn_entry;
 	fat_dir_entry_t *f_entry;
-	uint8_t sector[512]; // Each sector is 512 bytes long
+	unsigned char sector[512]; /* Each sector is 512 bytes long */
 	time_t rawtime;
 	short int tme = 0;
 	short int date = 0;
@@ -451,13 +419,12 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	}
 	
 	/* Clear out before reading into */
-	memset(sector, 0, sizeof(sector));
+	memset(sector, 0, 512*sizeof(unsigned char));
 		
 	/* Read it */
 	fat->dev->read_blocks(fat->dev, loc[0], 1, sector); 
 	
-	/* Memcpy */
-	if(attr == 0x0F) // Long file entry
+	if(attr == 0x0F) /* Long file entry */
 	{
 		memcpy(sector + loc[1] + ORDER, &(lfn_entry->Order), 1);
 		memcpy(sector + loc[1] + FNPART1, lfn_entry->FNPart1, 10);
@@ -465,10 +432,8 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 		memcpy(sector + loc[1] + CHECKSUM, &(lfn_entry->Checksum), 1);
 		memcpy(sector + loc[1] + FNPART2, lfn_entry->FNPart2, 12);
 		memcpy(sector + loc[1] + FNPART3, lfn_entry->FNPart3, 4);
-		
-		/* printf("Just saved:\n Order: %d FNPart1: %s Attr: %x Checksum: %x FNPart2: %s FNPart3: %s\n", lfn_entry->Order, lfn_entry->FNPart1, lfn_entry->Attr, lfn_entry->Checksum, lfn_entry->FNPart2, lfn_entry->FNPart3); */
 	}
-	else             // File/folder entry
+	else             /* File/folder entry */
 	{
 		tme = generate_time(timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec/2);
 		date = generate_date(1900 + timeinfo->tm_year, timeinfo->tm_mon+1, timeinfo->tm_mday);
@@ -486,7 +451,6 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 		memcpy(sector + loc[1] + STARTCLUSTER, &(f_entry->FstClusLO), 2);
 		memcpy(sector + loc[1] + FILESIZE, &(f_entry->FileSize), 4);
 		
-		/*printf("Just saved:\n Name: %s Extension: %s Attr: %x Cluster: %d Filesize: %d\n", f_entry->FileName, f_entry->Ext, f_entry->Attr, f_entry->FstClusLO, f_entry->FileSize);*/
 	}
 	
 	/* Write it back */
@@ -503,18 +467,17 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	int sector_loc;
 	int ptr_loc;
 	int *locations = malloc(sizeof(int)*2);
-	uint8_t sector[512]; /* Each sector is 512 bytes long */
-	cluster_node_t    *cur_cluster = curdir->Data_Clusters;
+	unsigned char  *sector = malloc(512*sizeof(unsigned char)); /* Each sector is 512 bytes long */
+	cluster_node_t *cur_cluster = curdir->Data_Clusters;
 	
 	locations[0] = -1;
 	locations[1] = -1;
 	
 	printf("Trying to create the file in this directory: %s\n", curdir->Name);
 	
-	/* Dealing with root directory */
-	if(curdir->Parent == NULL)
+	/* Dealing with root directory (FAT16 only) */
+	if(curdir->Parent == NULL && fat->fat_type == FAT16)  /* Fat16 root directory has a constant amount of memory to build entries while fat32's root directory uses clusters(expandable) */
 	{
-		printf("Creating file in root directory\n");
 		for(i = 0; i < fat->root_dir_sectors_num; i++) {
 			
 			/* Get the sector location */
@@ -535,9 +498,9 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 					if(empty_entry_count == num_entries)
 					{
 						printf("Root -- Found location with %d free entries \n", num_entries);
-						if(ptr_loc < ((num_entries - 1)* 32)) // corner case: traveling across sectors to fill the case
+						if(ptr_loc < ((num_entries - 1)* 32)) /* Corner case: traveling across sectors to fill the case */
 						{
-							locations[0] = sector_loc - 1;  // go to previous 
+							locations[0] = sector_loc - 1;  /* Go to previous sector */ 
 							locations[1] = fat->boot_sector.bytes_per_sector - (((num_entries - 1)*32) - ptr_loc);
 						}
 						else
@@ -546,21 +509,20 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 							locations[1] = ptr_loc - ((num_entries-1)*32);
 						}
 						
-						goto finish; // OMG!@!!$!!@ Yes, its a goto. Used correctly.
+						goto finish; /* OMG!@!!$!!@ Yes, its a goto. Used correctly. */
 					}
 				}
 				else
 				{
-					empty_entry_count = 0; // Restart entry count
+					empty_entry_count = 0; /* Restart entry count */
 				}
 				
-				ptr_loc +=32;
+				ptr_loc += 32;
 			}
 		}
 	}
 	else
 	{
-		printf("Creating file in sub directory\n");
 		/* Go through each cluster that belongs to this folder */
 		while(cur_cluster != NULL) 
 		{
@@ -585,9 +547,9 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 						if(empty_entry_count == num_entries)
 						{
 							printf("Other -- Found location with %d free entries \n", num_entries);
-							if(ptr_loc < ((num_entries - 1)* 32)) // corner case: traveling across sectors to fill the case
+							if(ptr_loc < ((num_entries - 1)* 32)) /* Corner case: traveling across sectors to fill the case */
 							{
-								locations[0] = sector_loc - 1;  // go to previous 
+								locations[0] = sector_loc - 1;  /* Go to previous sector */
 								locations[1] = fat->boot_sector.bytes_per_sector - (((num_entries - 1)*32) - ptr_loc);
 							}
 							else
@@ -596,25 +558,26 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 								locations[1] = ptr_loc - ((num_entries-1)*32);
 							}
 							
-							goto finish; // OMG!@!!$!!@ Yes, its a goto. Used correctly.
+							goto finish; /* OMG!@!!$!!@ Yes, its a goto. Used correctly. */
 						}
 					}
 					else
 					{
-						empty_entry_count = 0; // Restart entry count
+						empty_entry_count = 0; /* Restart entry count */
 					}
 					
-					ptr_loc +=32;
+					ptr_loc += 32;
 				}
 			}
-			// Cant go across clusters to fulfill case
+			
+			/* Cant go across clusters to fulfill case */
 			empty_entry_count = 0;  
 			cur_cluster = cur_cluster->Next;
 		}
 	}
 	finish:
 	
-	// Didnt find one? Allocate a new cluster for this folder and set loc accordingly.
+	/* Didnt find one? Allocate a new cluster for this folder and set loc accordingly. */
 	if(locations[0] == -1 && locations[1] == -1)
 	{
 		cur_cluster = curdir->Data_Clusters;
@@ -631,6 +594,8 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 		locations[0] = fat->data_sec_loc + ((cur_cluster->Next->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster);   
 		locations[1] = 0;
 	}
+	
+	free(sector);
 	
 	return locations;
 }

@@ -95,6 +95,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     {
         found->FileSize = 0;
         delete_cluster_list(mnt->fs, found);
+		update_fat_entry(mnt->fs, found);
     }
 
     /* Find a free file handle */
@@ -168,8 +169,8 @@ static int fs_fat_close(void * h) {
 static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
     file_t fd = ((file_t)h) - 1;
     fatfs_t *fs;
-    uint8_t *block;
-    uint8_t *bbuf = (uint8_t *)buf;
+    unsigned char *block;
+    unsigned char *bbuf = (unsigned char *)buf;
     ssize_t rv;
 
     mutex_lock(&fat_mutex);
@@ -201,9 +202,6 @@ static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
         cnt = fh[fd].node->FileSize - fh[fd].ptr;
     }
 
-    /* Make sure we clean out the string that we are going to return */
-    memset(bbuf, 0, sizeof(bbuf));
-
     fs = fh[fd].mnt->fs;
     rv = (ssize_t)cnt;
 	
@@ -229,7 +227,7 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
 {
     file_t fd = ((file_t)h) - 1;
     fatfs_t *fs;
-    uint8_t *bbuf = (uint8_t *)malloc(sizeof(uint8_t)*(cnt+1)); 
+    unsigned char *bbuf = (unsigned char *)malloc(sizeof(unsigned char)*(cnt+1)); 
     ssize_t rv;
 
     mutex_lock(&fat_mutex);
