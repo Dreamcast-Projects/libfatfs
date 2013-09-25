@@ -100,7 +100,7 @@ node_entry_t * get_child_of_parent(node_entry_t *parent, unsigned char *child_na
     node_entry_t *child = parent->Children;
 	
 	while(child != NULL) 
-	{
+	{	
 	    if(strcmp(child->Name, child_name) == 0) {
 		    return child;
 		}
@@ -143,12 +143,13 @@ node_entry_t *fat_search_by_path(node_entry_t *root, const char *fn)
 		}
 
 		while(pch != NULL) {
+		
 			if((target = get_child_of_parent(child, pch))) 
 			{
 				pch = strtok (NULL, "/");
-				/* printf("Next: %s\n", pch); */
+				
 				if(pch != NULL) {
-					child = target->Children;
+					child = target;
 				}
 			}
 			else 
@@ -183,8 +184,8 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 	node_entry_t    *child;
 	node_entry_t    *new_entry;
 
-	memset(lfnbuf1, 0, sizeof(unsigned char)*255);
-	memset(lfnbuf2, 0, sizeof(unsigned char)*255);
+	memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+	memset(lfnbuf2, 0, sizeof(unsigned char)*256);
 	
 	/* Read 1 sector */
 	fat->dev->read_blocks(fat->dev, sector_loc, 1, buf);
@@ -209,7 +210,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 				
 				if(lfnbuf2[0] != '\0') {
 				    strcat(lfnbuf1, lfnbuf2);
-					memset(lfnbuf2, 0, sizeof(unsigned char)*255);
+					memset(lfnbuf2, 0, sizeof(unsigned char)*256);
 				}
 			}
 			else if(lfnbuf2[0] == '\0')
@@ -218,7 +219,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 				
 				if(lfnbuf1[0] != '\0') {
 				    strcat(lfnbuf2, lfnbuf1);
-					memset(lfnbuf1, 0, sizeof(unsigned char)*255);
+					memset(lfnbuf1, 0, sizeof(unsigned char)*256);
 				}
 			}
 			var += ENTRYSIZE; 
@@ -226,7 +227,6 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 		}
 		/* Its a file/folder entry */
 		else {
-			new_entry = malloc(sizeof(node_entry_t));
 		
 			memset(&temp, 0, sizeof(fat_dir_entry_t));	
 			
@@ -238,6 +238,15 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 			
 			temp.FileName[8] = '\0';
 			temp.Ext[3] = '\0';
+			
+			/* Dont care about these hidden entries */
+			if(strcmp(temp.FileName, ".       ") == 0 || strcmp(temp.FileName, "..      ") == 0)
+			{
+				var += ENTRYSIZE; 
+				continue; /* Continue on to the next entry */
+			}
+			
+			new_entry = malloc(sizeof(node_entry_t));
 			
 			/* Deal with no long name */
 			if(lfnbuf1[0] == '\0' && lfnbuf2[0] == '\0')
@@ -257,7 +266,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 				new_entry->ShortName = malloc(strlen(lfnbuf1));
 				strcpy(new_entry->Name, lfnbuf1);
 				strcpy(new_entry->ShortName, lfnbuf1);  
-				memset(lfnbuf1, 0, sizeof(unsigned char)*255);
+				memset(lfnbuf1, 0, sizeof(unsigned char)*256);
 			}
 			else if(lfnbuf1[0] != '\0')
 			{
@@ -276,8 +285,8 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 				new_entry->ShortName = malloc(strlen(lfnbuf2));
 				strcpy(new_entry->Name, lfnbuf1);
 				strcpy(new_entry->ShortName, lfnbuf2);  
-				memset(lfnbuf1, 0, sizeof(unsigned char)*255);
-				memset(lfnbuf2, 0, sizeof(unsigned char)*255);
+				memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+				memset(lfnbuf2, 0, sizeof(unsigned char)*256);
 			}
 			else {
 				strcat(lfnbuf1, temp.FileName);
@@ -295,8 +304,8 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 				new_entry->ShortName = malloc(strlen(lfnbuf1));
 				strcpy(new_entry->Name, lfnbuf2);
 				strcpy(new_entry->ShortName, lfnbuf1);  
-				memset(lfnbuf1, 0, sizeof(unsigned char)*255);
-				memset(lfnbuf2, 0, sizeof(unsigned char)*255);
+				memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+				memset(lfnbuf2, 0, sizeof(unsigned char)*256);
 			}			
 			
 			new_entry->Attr = temp.Attr;
@@ -308,7 +317,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 			new_entry->Children = NULL;
 			new_entry->Next = NULL;
 			
-			//printf("FileName: %s ShortName: %s Parent: %s  Attr: %x Cluster: %d  \n", new_entry->Name, new_entry->ShortName, parent->Name, new_entry->Attr, new_entry->Data_Clusters->Cluster_Num);
+			printf("FileName: %s ShortName: %s Parent: %s  Attr: %x Cluster: %d  \n", new_entry->Name, new_entry->ShortName, parent->Name, new_entry->Attr, temp.FstClusLO);
 			
 			if(parent->Children == NULL) {
 				parent->Children = new_entry;
@@ -337,8 +346,11 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 		}
 	}
 	
+	//printf("Free buff \n");
 	free(buf);
+	//printf("Free lfnbuf1 \n");
 	free(lfnbuf1);
+	//printf("Free lfnbuf2 \n");
 	free(lfnbuf2);
 }
 
@@ -716,7 +728,7 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
                 pch = strtok (NULL, "/");
               
                 if(pch != NULL) {
-                    child = target->Children;
+                    child = target;
                 }
             }
             else 

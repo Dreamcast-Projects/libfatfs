@@ -16,7 +16,7 @@
 #include "dir_entry.h"
 #include "boot_sector.h"
 
-static short sector_offset = -1;
+static short sector_offset = -1; /* Makes it to where we always have to read a sector (FAT table) */
 static unsigned char buffer[512];
 
 /* Read the Fat table from the SD card and stores it in table */
@@ -26,12 +26,16 @@ unsigned int read_fat_table_value(fatfs_t *fat, int byte_index)
 	short byte_offset = (fat->fat_type == FAT16) ? 2 : 4;
 	short ptr_offset;
 	
+	/* Check if we have to read a new sector */
 	if(sector_offset != (byte_index / fat->boot_sector.bytes_per_sector))
 	{
+		/* Calculate sector offset from file_alloc_tab_sec_loc */
 		sector_offset = byte_index / fat->boot_sector.bytes_per_sector;
 	
+		/* Clear buffer */
 		memset(buffer, 0, 512*sizeof(unsigned char));
 	
+		/* Read new sector */
 		fat->dev->read_blocks(fat->dev, fat->file_alloc_tab_sec_loc + sector_offset, 1, buffer);
 	}
 	
@@ -47,12 +51,16 @@ void write_fat_table_value(fatfs_t *fat, int byte_index, int value)
 	short byte_offset = (fat->fat_type == FAT16) ? 2 : 4;
 	short ptr_offset;
 	
+	/* Check if we have to read a new sector */
 	if(sector_offset != (byte_index / fat->boot_sector.bytes_per_sector))
 	{
+		/* Calculate sector offset from file_alloc_tab_sec_loc */
 		sector_offset = byte_index / fat->boot_sector.bytes_per_sector;
 	
+		/* Clear buffer */
 		memset(buffer, 0, 512*sizeof(unsigned char));
 	
+		/* Read new sector */
 		fat->dev->read_blocks(fat->dev, fat->file_alloc_tab_sec_loc + sector_offset, 1, buffer);
 	}
 	
@@ -165,13 +173,13 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	rv->root->Next = NULL;                /* Should always be NULL. Root is the top most directory and has no equal */
 	
 	/*  Build Directory Tree */
-	if(rv->fat_type == FAT16)
+	if(rv->fat_type == FAT16) /* Fat16 */
 	{
 		for(i = 0; i < rv->root_dir_sectors_num; i++) {
 			parse_directory_sector(rv, rv->root, rv->root_dir_sec_loc + i); 
 		}	
 	}
-	else /* Fat32 */
+	else                      /* Fat32 */
 	{
 		node = rv->root->Data_Clusters;
 				
@@ -181,8 +189,10 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 				parse_directory_sector(rv, rv->root, new_sector_loc + i);
 			}
 			node = node->Next;
-		}while(node != NULL);
+		} while(node != NULL);
 	}
+	
+	printf("After building directory tree\n");
 	
 	return rv;
 }
@@ -190,9 +200,13 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 void fat_fs_shutdown(fatfs_t *fs) {
 
     fs->dev->shutdown(fs->dev);
+	
+	printf("Gonna delete directory tree\n");
     
     // Free the Directory tree fs->root
     delete_directory_tree(fs->root);
+	
+	printf("After deleting directory tree\n");
 
     free(fs);
 }

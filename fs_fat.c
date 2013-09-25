@@ -29,7 +29,7 @@ typedef struct fs_fat_fs {
 
 LIST_HEAD(fat_list, fs_fat_fs);
 
-/* Global list of mounted FAT16 partitions */
+/* Global list of mounted FAT16/FAT32 partitions */
 static struct fat_list fat_fses;
 
 /* Mutex for file handles */
@@ -41,7 +41,7 @@ static struct {
     int           mode;       /* O_RDONLY, O_WRONLY, O_RDWR, O_TRUNC, O_DIR, etc */
     uint32        ptr;        /* Current read position in bytes */
     dirent_t      dirent;     /* A static dirent to pass back to clients */
-    node_entry_t  *node;
+    node_entry_t  *node;	  /* Link to node in directory (binary) tree */
     node_entry_t  *dir;       /* Used by opendir */
     fs_fat_fs_t   *mnt;       /* Which mount instance are we using? */
 } fh[MAX_FAT_FILES];
@@ -49,7 +49,7 @@ static struct {
 /* Open a file or directory */
 static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     file_t fd;
-    char *ufn = (char *)malloc(strlen(fn)+4); /* 4:  3 for "/sd" and 1 for null character */
+    char *ufn = malloc(strlen(fn)+4); /* 4:  3 for "/sd" and 1 for null character */
     fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
     node_entry_t *found = NULL;
 
@@ -79,9 +79,12 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
         return NULL;
     }
     else if(found == NULL && (mode & O_CREAT)) {
-         found = create_entry(mnt->fs, mnt->fs->root, ufn, ARCHIVE);
+	
+		printf("Making a file\n");
+		
+        found = create_entry(mnt->fs, mnt->fs->root, ufn, ARCHIVE);
          
-         if(found == NULL)
+        if(found == NULL)
              return NULL;
     }
     else if(found != NULL && (found->Attr & READ_ONLY) && ((mode & O_WRONLY) || (mode & O_RDWR))) 
@@ -136,6 +139,8 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     fh[fd].dir = NULL;
 
     mutex_unlock(&fat_mutex);
+	
+	free(ufn);
 
     return (void *)(fd + 1);
 }
@@ -227,7 +232,7 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
 {
     file_t fd = ((file_t)h) - 1;
     fatfs_t *fs;
-    unsigned char *bbuf = (unsigned char *)malloc(sizeof(unsigned char)*(cnt+1)); 
+    unsigned char *bbuf = malloc(sizeof(unsigned char)*(cnt+1)); 
     ssize_t rv;
 
     mutex_lock(&fat_mutex);
@@ -272,6 +277,8 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
     update_fat_entry(fs, fh[fd].node);
 
     mutex_unlock(&fat_mutex);
+	
+	free(bbuf);
 
     return rv;
 }
@@ -344,6 +351,8 @@ static off_t fs_fat_tell(void *h) {
 static size_t fs_fat_total(void *h) {
     file_t fd = ((file_t)h) - 1;
     size_t rv;
+	
+	printf("Total Function Called\n");
     
     mutex_lock(&fat_mutex);
 
@@ -366,7 +375,6 @@ static dirent_t *fs_fat_readdir(void *h) {
 
     /* Check that the fd is valid */
     if(fd >= MAX_FAT_FILES || !fh[fd].used || !(fh[fd].mode & O_DIR)) {
-	/*printf("This file descriptor is NOT valid. Exited ReadDir\n"); */
         mutex_unlock(&fat_mutex);
         errno = EINVAL;
         return NULL;
@@ -392,7 +400,7 @@ static dirent_t *fs_fat_readdir(void *h) {
     /* Fill in the static directory entry */
     fh[fd].dirent.size = fh[fd].dir->FileSize;
     memcpy(fh[fd].dirent.name, fh[fd].dir->Name, strlen(fh[fd].dir->Name));
-    fh[fd].dirent.name[strlen(fh[fd].dir->Name)] = 0;
+    fh[fd].dirent.name[strlen(fh[fd].dir->Name)] = '\0';
     fh[fd].dirent.attr = fh[fd].dir->Attr;
     fh[fd].dirent.time = 0; /*inode->i_mtime;
     fh[fd].ptr += dent->rec_len;*/
@@ -597,7 +605,7 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 		}
 		
 		/* Make sure this folder has no contents(children) */
-       if(f->Children->Next->Next != NULL) /* Skip over . and .. folder entries */
+       if(f->Children != NULL) 
 	   {
 			errno = ENOTEMPTY;
 			printf("This folder is not empty\n");
