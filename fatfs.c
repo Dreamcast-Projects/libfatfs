@@ -166,6 +166,7 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 
 	rv->root = malloc(sizeof(node_entry_t));
 	rv->root->Name = (unsigned char *)remove_all_chars(fmp, '/');          /*  */
+	rv->root->ShortName = (unsigned char *)remove_all_chars(fmp, '/');
 	rv->root->Attr = DIRECTORY;           /* Root directory is obviously a directory */
 	rv->root->Data_Clusters = cluster;    /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
 	rv->root->Parent = NULL;              /* Should always be NULL for root*/
@@ -200,13 +201,6 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 void fat_fs_shutdown(fatfs_t *fs) {
 
     fs->dev->shutdown(fs->dev);
-	
-	printf("Gonna delete directory tree\n");
-    
-    // Free the Directory tree fs->root
-    delete_directory_tree(fs->root);
-	
-	printf("After deleting directory tree\n");
 
     free(fs);
 }

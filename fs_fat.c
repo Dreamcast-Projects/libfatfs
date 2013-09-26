@@ -852,6 +852,14 @@ int fs_fat_unmount(const char *mp) {
     }
 
     if(found) {
+	
+		printf("Gonna delete directory tree\n");
+    
+		// Free the Directory tree fs->root
+		delete_directory_tree(i->fs->root);
+		
+		printf("After deleting directory tree\n");
+	
         LIST_REMOVE(i, entry);
 
         /* XXXX: We should probably do something with open files... */
@@ -865,6 +873,7 @@ int fs_fat_unmount(const char *mp) {
     }
 
     mutex_unlock(&fat_mutex);
+	
     return rv;
 }
 

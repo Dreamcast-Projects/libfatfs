@@ -562,20 +562,23 @@ void delete_tree_entry(node_entry_t * node)
 	node_entry_t *child;
     cluster_node_t  *old;
     
-	if(node->Parent->Children == node) /* If we are the first child in the list */
+	if(node->Parent != NULL)
 	{
-		node->Parent->Children = node->Next;
-	}
-	else /* Otherwise... */
-	{
-		child = node->Parent->Children;
-		
-		while(child->Next != node)
+		if(node->Parent->Children == node) /* If we are the first child in the list */
 		{
-			child = child->Next;
+			node->Parent->Children = node->Next;
 		}
-		
-		child->Next = node->Next;
+		else /* Otherwise... */
+		{
+			child = node->Parent->Children;
+			
+			while(child->Next != node)
+			{
+				child = child->Next;
+			}
+			
+			child->Next = node->Next;
+		}
 	}
 	
     free(node->Name);      /* Free the name */
@@ -593,9 +596,7 @@ void delete_tree_entry(node_entry_t * node)
 }
 
 void delete_directory_tree(node_entry_t * node)
-{
-    static int count = 0;
-    
+{    
     if(node == NULL)
         return;
     
@@ -604,9 +605,14 @@ void delete_directory_tree(node_entry_t * node)
     
     if(node->Next == NULL && node->Children == NULL)
     {
+		printf("DELETING FileName: %s ShortName: %s ", node->Name, node->ShortName);
+		
+		if(node->Parent != NULL)
+			printf("Parent: %s \n", node->Parent->Name);
+		else
+			printf("\n");
+		
         delete_tree_entry(node);
-        count++;
-        printf("Count: %d\n", count);
     }
 }
 
