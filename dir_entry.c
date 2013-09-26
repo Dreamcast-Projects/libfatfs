@@ -16,6 +16,7 @@ unsigned char * extract_long_name(fat_lfn_entry_t *lfn)
 	char c;
 	unsigned char temp[2];
 	unsigned char *buf = malloc(sizeof(unsigned char)*13);
+	unsigned char *final = NULL;
 	
 	memset(temp, 0, sizeof(unsigned char)*2);
 	memset(buf, 0, sizeof(unsigned char)*13);
@@ -42,19 +43,21 @@ unsigned char * extract_long_name(fat_lfn_entry_t *lfn)
 	}
 	
 	/* Remove filler chars at end of the long file name */
-	buf = remove_all_chars(buf, 0xFF);
+	final = remove_all_chars(buf, 0xFF);
 	
 	i = 0;
 	
 	/* Convert long name into uppercase */
-	while (buf[i])
+	while (final[i])
     {
-       c = buf[i];
-       buf[i] = toupper((int)c);
+       c = final[i];
+       final[i] = toupper((int)c);
        i++;
     }
 	
-	return buf;
+	free(buf);
+	
+	return final;
 }
 
 
@@ -174,6 +177,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 	int var = 0;
 	int new_sector_loc = 0;
 	
+	unsigned char *str_temp;
 	unsigned char *buf = malloc(sizeof(unsigned char)*512);
 	unsigned char *lfnbuf1 = malloc(sizeof(unsigned char)*256); /* Longest a filename can be is 255 chars */
 	unsigned char *lfnbuf2 = malloc(sizeof(unsigned char)*256); /* Longest a filename can be is 255 chars */
@@ -206,7 +210,9 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 		
 			if(lfnbuf1[0] == '\0') 
 			{
-				strcpy(lfnbuf1, extract_long_name(&lfn));
+				str_temp = extract_long_name(&lfn);
+				strcpy(lfnbuf1, str_temp);
+				free(str_temp);
 				
 				if(lfnbuf2[0] != '\0') {
 				    strcat(lfnbuf1, lfnbuf2);
@@ -215,7 +221,9 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 			}
 			else if(lfnbuf2[0] == '\0')
 			{
-				strcpy(lfnbuf2, extract_long_name(&lfn));
+				str_temp = extract_long_name(&lfn);
+				strcpy(lfnbuf2, str_temp);
+				free(str_temp);
 				
 				if(lfnbuf1[0] != '\0') {
 				    strcat(lfnbuf2, lfnbuf1);
@@ -261,7 +269,11 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 						strcat(lfnbuf1, temp.Ext);
 					}
 				}
-				lfnbuf1 = remove_all_chars(lfnbuf1,' '); 
+				
+				str_temp = remove_all_chars(lfnbuf1,' '); 
+				strcpy(lfnbuf1, str_temp);
+				free(str_temp);
+				
 				new_entry->Name = malloc(strlen(lfnbuf1));
 				new_entry->ShortName = malloc(strlen(lfnbuf1));
 				strcpy(new_entry->Name, lfnbuf1);
