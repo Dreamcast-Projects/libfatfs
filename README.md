@@ -30,23 +30,17 @@ Opens a file or folder.
 
 int fd = open("/sd/hello.c", O_RDWR | O_CREAT); /* Returns a file descriptor */
 
-FILE *fp = fopen("/sd/hello.txt", "w");         /* Return a file pointer */
-
 ================================= --- Close --- ===================================
 
 Closes a file or folder
 
 close(fd);   /* Closes file/folder associated with file descriptor */
 
-fclose(fp);  /* Closes file/folder associated with file pointer */
-
 ================================= --- Read --- ===================================
 
 Read from a file
 
 read(fd, buf, 512);   /* Read 512 bytes from file associated with fd into buf */
-
-fread(buf, sizeof(unsigned char), 512, fp); /* Read 512 items of size sizeof(unsigned char) from file associated with fp into buf */
 
 ================================= --- Write --- ===================================
 
@@ -55,16 +49,11 @@ Write to a file
 write(fd, text, strlen(text));        /* Write strlen(text) number of bytes of the string stored 
 										 in text(char *) to file associated with fd */
 
-fwrite(text, sizeof(unsigned char), strlen(text), fp); /* Write strlen(text) number of items of size sizeof(unsigned char) from text(char *)
-														  to file associated with fp */
-
 ================================= --- Seek --- ===================================
 
 Repositions the offset of the open file
 
 lseek(fd, 9, SEEK_SET); /* Sets byte offset to 9 bytes from the beginning of the file */
-
-fseek(fp, 9, SEEK_SET); /* Sets byte offset to 9 bytes from the beginning of the file */
 
 ================================= --- Tell --- ===================================
 
@@ -73,21 +62,11 @@ Tells the current byte offset of the open file.
 fs_tell(fd); or lseek(fd, 0, SEEK_CUR); /* Both return the same value
                                           (current byte offset of the open file) */
 
-Equivalent:
-
-fseek(fp, 0, SEEK_CUR);
-
 ================================= --- Total --- ===================================
 
 Returns the size of the file.
 
-fs_total(fd); /* Return the size of the file in bytes */
-
-Equivalent:
-
-fseek(fp, 0, SEEK_END); /* Of course you will have to set the offset back to the 
-                           beggining of the file */
-fseek(fp, 0, SEEK_SET);			
+fs_total(fd); /* Return the size of the file in bytes */	
 
 ================================= --- ReadDir --- =================================
 
@@ -105,8 +84,6 @@ Deletes a file
 
 unlink("/sd/deleteme.txt");  /* Deletes "deleteme.txt" from "sd" directory */
 
-remove("/sd/deleteme.txt");  /* Deletes "deleteme.txt" from "sd" directory */
-
 ================================= --- MkDir --- ===================================
 
 Makes a directory
@@ -123,6 +100,6 @@ rmdir("/sd/folder1");  /* Deletes "folder1" folder from "sd" directory */
 
 Get the file access mode and the file status flags of an opened file.
 
-fcntl(fd, F_GETFL, ... /* arg */ ); /* Only command supported right now. Returns teh file access mode and the file status flags of a file/folder associated with fd */
+fcntl(fd, F_GETFL, ... /* arg */ ); /* Only command supported right now. Returns the file access mode and the file status flags of a file/folder associated with fd */
 
 
