@@ -79,8 +79,6 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
         return NULL;
     }
     else if(found == NULL && (mode & O_CREAT)) {
-	
-		printf("Making a file\n");
 		
         found = create_entry(mnt->fs, mnt->fs->root, ufn, ARCHIVE);
          
@@ -154,16 +152,6 @@ static int fs_fat_close(void * h) {
         fh[fd].used = 0;
         fh[fd].ptr = 0;
 		fh[fd].mode = 0;
-
-        /* If it was open for writing make sure to update entry on SD card
-           Change file size
-           Change time
-        
-        if(fh[fd].mode & O_WRONLY || fh[fd].mode & O_RDWR)
-        {
-            update_fat_entry(fh[fd].mnt->fs, fh[fd].node);
-		}
-		*/
     }
 
     mutex_unlock(&fat_mutex);
@@ -283,9 +271,9 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
     return rv;
 }
 
-static off_t fs_fat_seek(void *h, off_t offset, int whence) {
+static _off_t fs_fat_seek(void *h, _off_t offset, int whence) {
     file_t fd = ((file_t)h) - 1;
-    off_t rv;
+    _off_t rv;
 
     mutex_lock(&fat_mutex);
 
@@ -316,22 +304,15 @@ static off_t fs_fat_seek(void *h, off_t offset, int whence) {
             return -1;
     }
 
-    /* Check bounds */ 
-    if(fh[fd].ptr > fh[fd].node->FileSize) 
-        fh[fd].ptr = fh[fd].node->FileSize;
-
-    rv = (off_t)fh[fd].ptr;
-
+    rv =  (_off_t)fh[fd].ptr;
     mutex_unlock(&fat_mutex);
 	
     return rv;
 }
 
-static off_t fs_fat_tell(void *h) {
+static _off_t fs_fat_tell(void *h) {
     file_t fd = ((file_t)h) - 1;
-    off_t rv;
-
-    printf("Tell Function Called\n");
+    _off_t rv;
     
     mutex_lock(&fat_mutex);
 
@@ -351,8 +332,83 @@ static off_t fs_fat_tell(void *h) {
 static size_t fs_fat_total(void *h) {
     file_t fd = ((file_t)h) - 1;
     size_t rv;
+    
+    mutex_lock(&fat_mutex);
+
+    if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
+        mutex_unlock(&fat_mutex);
+        errno = EINVAL;
+        return -1;
+    }
+
+    rv = fh[fd].node->FileSize;
+    mutex_unlock(&fat_mutex);
 	
-	printf("Total Function Called\n");
+    return rv;
+}
+
+
+static _off64_t fs_fat_seek64(void *h, _off64_t offset, int whence) {
+    file_t fd = ((file_t)h) - 1;
+    _off64_t rv;
+
+    mutex_lock(&fat_mutex);
+
+    /* Check that the fd is valid */
+    if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
+        mutex_unlock(&fat_mutex);
+        errno = EBADF;
+        return -1;
+    }
+
+    /* Update current position according to arguments */
+    switch(whence) {
+        case SEEK_SET:
+            fh[fd].ptr = offset;
+            break;
+
+        case SEEK_CUR:
+            fh[fd].ptr += offset;
+            break;
+
+        case SEEK_END:
+            fh[fd].ptr = fh[fd].node->FileSize + offset;
+            break;
+
+        default:
+            mutex_unlock(&fat_mutex);
+	    errno = EINVAL;
+            return -1;
+    }
+
+    rv =  (_off64_t)fh[fd].ptr;
+    mutex_unlock(&fat_mutex);
+	
+    return rv;
+}
+
+static _off64_t fs_fat_tell64(void *h) {
+    file_t fd = ((file_t)h) - 1;
+    _off64_t rv;
+    
+    mutex_lock(&fat_mutex);
+
+    if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
+        mutex_unlock(&fat_mutex);
+        errno = EINVAL;
+        return -1;
+    }
+
+    rv = (off_t)fh[fd].ptr;
+
+    mutex_unlock(&fat_mutex);
+	
+    return rv;
+}
+
+static uint64 fs_fat_total64(void *h) {
+    file_t fd = ((file_t)h) - 1;
+    size_t rv;
     
     mutex_lock(&fat_mutex);
 
@@ -590,7 +646,6 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 		if(f->Attr & ARCHIVE)
 		{
 			errno = ENOTDIR;
-			printf("Trying to rmdir a file\n");
 			mutex_unlock(&fat_mutex);
 			return -1;
 		}
@@ -599,7 +654,6 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 		if(f->Attr & READ_ONLY)
 		{
 			errno = EROFS;
-			printf("Read only folder\n");
 			mutex_unlock(&fat_mutex);
 			return -1;
 		}
@@ -608,7 +662,6 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
        if(f->Children != NULL) 
 	   {
 			errno = ENOTEMPTY;
-			printf("This folder is not empty\n");
 			mutex_unlock(&fat_mutex);
 			return -1;
 	   }
@@ -622,7 +675,6 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 	else /* Not found */
 	{
 		errno = ENOENT;
-		printf("Folder not found\n");
 		mutex_unlock(&fat_mutex);
 		return -1;
 	}
@@ -632,73 +684,6 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 	return 0;
 }
 
-/*
-static int fs_fat_stat(vfs_handler_t *vfs, const char *fn, stat_t *rv) {
-    
-    fs_ext2_fs_t *fs = (fs_ext2_fs_t *)vfs->privdata;
-    int irv;
-    ext2_inode_t *inode;
-    uint32_t used;
-
-    if(!rv) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    mutex_lock(&fat_mutex);
-
-    // Find the object in question 
-    if((irv = ext2_inode_by_path(fs->fs, fn, &inode, &used, 1, NULL))) {
-        mutex_unlock(&fat_mutex);
-        errno = -irv;
-        return -1;
-    }
-
-    // Fill in the easy parts of the structure. 
-    rv->dev = vfs;
-    rv->unique = used;
-    rv->size = inode->i_size;
-    rv->time = inode->i_mtime;
-    rv->attr = 0;
-
-    // Parse out the ext2 mode bits 
-    switch(inode->i_mode & 0xF000) {
-        case EXT2_S_IFLNK:
-            rv->type = STAT_TYPE_SYMLINK;
-            break;
-
-        case EXT2_S_IFREG:
-            rv->type = STAT_TYPE_FILE;
-            break;
-
-        case EXT2_S_IFDIR:
-            rv->type = STAT_TYPE_DIR;
-            break;
-
-        case EXT2_S_IFSOCK:
-        case EXT2_S_IFIFO:
-        case EXT2_S_IFBLK:
-        case EXT2_S_IFCHR:
-            rv->type = STAT_TYPE_PIPE;
-            break;
-
-        default:
-            rv->type = STAT_TYPE_NONE;
-            break;
-    }
-
-    // Set the attribute bits based on the user permissions on the file. 
-    if(inode->i_mode & EXT2_S_IRUSR)
-        rv->attr |= STAT_ATTR_R;
-    if(inode->i_mode & EXT2_S_IWUSR)
-        rv->attr |= STAT_ATTR_W;
-
-    ext2_inode_put(inode);
-    mutex_unlock(&fat_mutex);
-    
-    return 0;
-}
-*/
 static int fs_fat_fcntl(void *h, int cmd, va_list ap) {
     file_t fd = ((file_t)h) - 1;
     int rv = -1;
@@ -761,16 +746,16 @@ static vfs_handler_t vh = {
     fs_fat_unlink,             /* unlink(delete a file) */
     NULL,                      /* mmap */
     NULL,                      /* complete */
-    NULL/*fs_fat_stat*/,               /* stat */
+    NULL,                      /* stat */
     fs_fat_mkdir,              /* mkdir */
     fs_fat_rmdir,              /* rmdir */
     fs_fat_fcntl,              /* fcntl */
     NULL,                      /* poll */
     NULL,                      /* link */
     NULL,                      /* symlink */
-    NULL,                      /* seek64 */
-    NULL,                      /* tell64 */
-    NULL,                      /* total64 */
+    fs_fat_seek64,             /* seek64 */
+    fs_fat_tell64,             /* tell64 */
+    fs_fat_total64,            /* total64 */
     NULL                       /* readlink */
 };
 
@@ -852,14 +837,9 @@ int fs_fat_unmount(const char *mp) {
     }
 
     if(found) {
-	
-		printf("Gonna delete directory tree\n");
-    
 		// Free the Directory tree fs->root
 		delete_directory_tree(i->fs->root);
-		
-		printf("After deleting directory tree\n");
-	
+
         LIST_REMOVE(i, entry);
 
         /* XXXX: We should probably do something with open files... */

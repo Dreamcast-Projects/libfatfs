@@ -89,7 +89,9 @@ int correct_filename(const char* str)
    /* Make sure the string is long and short enough */
    if(strlen(str) > 255 || strlen(str) <= 0)
    {
-       printf("Invalid filename, strlen: %d\n", strlen(str));
+#ifdef FAT2FS_DEBUG
+       printf("Invalid filename, strlen: %d\n", strlen(str)); 
+#endif
        errno = ENAMETOOLONG;
        return -1;
    }
@@ -98,7 +100,9 @@ int correct_filename(const char* str)
    {
        if (strchr(invalid_characters, *c))
        {
-          printf("Invalid filename, char found: %c\n", *c);
+#ifdef FAT2FS_DEBUG
+          printf("Invalid filename, char found: %c\n", *c); 
+#endif
           errno = ENAMETOOLONG;
           return -1;
        }
@@ -259,7 +263,7 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 	if(contains_lowercase(fn_temp))
 	{
 		unsigned int i;
-		*lfn = 1; /* This needs a long file name entry */
+		/* *lfn = 1; 8*//* This needs a long file name entry */ /* See reserved bit 0x0C in Directory entry */
 		
 		for(i = 0; i < strlen(fn_temp); i++)
 			fn_temp[i] = toupper((int)fn_temp[i]);
@@ -270,7 +274,9 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 	{
 		if(diff > 99999)
 		{
+#ifdef FAT2FS_DEBUG
 			printf("Too many entries(Short Entry Name) with the same name \n");
+#endif
 			return NULL;
 		}
 		
@@ -473,7 +479,9 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	locations[0] = -1;
 	locations[1] = -1;
 	
+#ifdef FAT2FS_DEBUG
 	printf("Trying to create the file in this directory: %s\n", curdir->Name);
+#endif
 	
 	/* Dealing with root directory (FAT16 only) */
 	if(curdir->Parent == NULL && fat->fat_type == FAT16)  /* Fat16 root directory has a constant amount of memory to build entries while fat32's root directory uses clusters(expandable) */
@@ -497,7 +505,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 					
 					if(empty_entry_count == num_entries)
 					{
-						printf("Root -- Found location with %d free entries \n", num_entries);
+						//printf("Root -- Found location with %d free entries \n", num_entries);
 						if(ptr_loc < ((num_entries - 1)* 32)) /* Corner case: traveling across sectors to fill the case */
 						{
 							locations[0] = sector_loc - 1;  /* Go to previous sector */ 
@@ -546,7 +554,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 						
 						if(empty_entry_count == num_entries)
 						{
-							printf("Other -- Found location with %d free entries \n", num_entries);
+							//printf("Other -- Found location with %d free entries \n", num_entries);
 							if(ptr_loc < ((num_entries - 1)* 32)) /* Corner case: traveling across sectors to fill the case */
 							{
 								locations[0] = sector_loc - 1;  /* Go to previous sector */
@@ -582,7 +590,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	{
 		cur_cluster = curdir->Data_Clusters;
 		
-		printf("Couldn't find the free entries. Allocating a Cluster...\n");
+		//printf("Couldn't find the free entries. Allocating a Cluster...\n");
 		
 		while(cur_cluster->Next != NULL)
 		{
@@ -591,6 +599,8 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 		
 		cur_cluster->Next = allocate_cluster(fat, curdir->Data_Clusters);
 		
+		clear_cluster(fat, cur_cluster->Next->Cluster_Num);
+		
 		locations[0] = fat->data_sec_loc + ((cur_cluster->Next->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster);   
 		locations[1] = 0;
 	}
@@ -598,6 +608,23 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	free(sector);
 	
 	return locations;
+}
+
+void clear_cluster(fatfs_t *fat, int cluster_num)
+{
+	int i;
+	int sector_loc;
+	unsigned char *empty = malloc(512*sizeof(unsigned char));
+	
+	memset(empty, 0, 512*sizeof(unsigned char));
+	
+	for(i = 0; i < fat->boot_sector.sectors_per_cluster; i++)
+	{
+		sector_loc = fat->data_sec_loc + ((cluster_num - 2) * fat->boot_sector.sectors_per_cluster) + i;   
+		fat->dev->write_blocks(fat->dev, sector_loc, 1, empty);
+	}
+	
+	free(empty);
 }
 
 short int generate_time(int hour, int minutes, int seconds)

@@ -76,7 +76,7 @@ struct fat_dir_entry
 																							0x40(0100 0000) - Not used. Must be zero
 																							0x80(1000 0000) - Not used. Must be zero
 */
-    unsigned char Res;          /* Reserved */
+    unsigned char Res;          /* Reserved : http://en.wikipedia.org/wiki/File_Allocation_Table#DIR_OFS_0Ch . Bit 4 [0x10] means lowercase extension and bit 3[0x08] lowercase basename, which allows for combinations such as "example.TXT" or "HELLO.txt" but not "Mixed.txt" */
     unsigned char CrtTimeTenth; /* Creation time in tenths of a second.  */
     unsigned short CrtTime;     /* Taken from http://www.tavi.co.uk/phobos/fat.html#file_time
 	                               <------- 0x17 --------> <------- 0x16 -------->

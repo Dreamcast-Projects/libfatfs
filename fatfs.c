@@ -193,8 +193,6 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 		} while(node != NULL);
 	}
 	
-	printf("After building directory tree\n");
-	
 	return rv;
 }
 

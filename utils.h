@@ -20,6 +20,7 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[]);
 int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries);
 unsigned char generate_checksum(char * short_filename);
 int contains_lowercase(const char *str);
+void clear_cluster(fatfs_t *fat, int cluster_num);
 
 short int generate_time(int hour, int minutes, int seconds);
 short int generate_date(int year, int month, int day);

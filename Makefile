@@ -4,7 +4,7 @@
 TARGET = libfat2fs.a
 OBJS = boot_sector.o fatfs.o dir_entry.o fs_fat.o utils.o 
 
-KOS_CFLAGS += -W -pedantic -Werror -Wno-pointer-sign -Wno-sign-compare -std=c99 
+KOS_CFLAGS += -W -pedantic -Werror -Wno-pointer-sign -Wno-sign-compare -std=c99 #-DFAT2FS_DEBUG
 
 all: create_kos_link defaultall
 
