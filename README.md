@@ -8,6 +8,9 @@ copyright(Microsoft) complications. I decided to go out on a limb and create the
 the in's and out's of the FAT16 & FAT32 file systems and benefit software engineers who program for the Sega Dreamcast in 
 the process.
 
+NOTE: A good portion(especially in fs_fat.c) of the code is used (as a skeleton) from libkosext2fs. libkosext2fs was written 
+by Lawrence Sebald (BlueCrab). So kudos to him. Giving him credit does not mean he was affiliated with or endorsed this library.
+
 #   This library is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
 #   the Free Software Foundation; either version 2 of the License, or
