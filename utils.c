@@ -45,18 +45,19 @@ void replace_all_chars(char **str, const char* replace_chars, unsigned char repl
 /* Returns 1 if a lowercase character is found in 'str', returns 0 otherwise */
 int contains_lowercase(const char *str)
 {
+	int count = 0;
 	const char *c = str;
 	
 	while (*c)
     {
 		if(islower((int)*c))
 		{
-			return 1;
+			count++;
 		}
 		c++;
     }
 
-	return 0;
+	return count;
 }
 
 /* http://stackoverflow.com/questions/122616/how-do-i-trim-leading-trailing-whitespace-in-a-standard-way */
@@ -263,6 +264,7 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 	if(contains_lowercase(fn_temp))
 	{
 		unsigned int i;
+		
 		/* *lfn = 1; 8*//* This needs a long file name entry */ /* See reserved bit 0x0C in Directory entry */
 		
 		for(i = 0; i < strlen(fn_temp); i++)
@@ -304,7 +306,6 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 		if(contains_lowercase(fn_temp))
 		{
 			unsigned int i;
-			*lfn = 1; /* This needs a long file name entry */
 			
 			for(i = 0; i < strlen(fn_temp); i++)
 				fn_temp[i] = toupper((int)fn_temp[i]);
