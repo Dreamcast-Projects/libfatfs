@@ -10,6 +10,24 @@
 #include "utils.h"
 #include "fat_defs.h"
 
+int num_alpha(char *str)
+{
+	int count = 0;
+	const char *c = str;
+	
+	while (*c)
+    {
+		if(isalpha((int)*c))
+		{
+			count++;
+		}
+		c++;
+    }
+
+	return count;
+	
+}
+
 /* 'str' is the string you want to remove characters 'c' from */
 char *remove_all_chars(const unsigned char* str, unsigned char c) {
 	unsigned char *copy = malloc(strlen(str)+1);
@@ -114,12 +132,16 @@ int correct_filename(const char* str)
    return 0;
 }
 
-char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char attr, int *lfn)
+char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char attr, int *lfn, unsigned char *res)
 {
 	int diff = 1;
 	
 	char *temp1 = NULL;
 	char *temp2 = NULL;
+	
+	char *lower = NULL;
+	char *ltemp1 = NULL;
+	char *ltemp2 = NULL;
 	
 	char *copy = NULL;
 	char *integer_string = malloc(7); 
@@ -265,7 +287,41 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 	{
 		unsigned int i;
 		
-		/* *lfn = 1; 8*//* This needs a long file name entry */ /* See reserved bit 0x0C in Directory entry */
+		lower = malloc(strlen(fn_temp)+1);
+		
+		strncpy(lower, fn_temp, strlen(fn_temp));
+		lower[strlen(fn_temp)] = '\0';
+		
+		ltemp1 = strtok(lower, ".");
+		
+		ltemp2 = strtok(NULL, ".");
+		
+		if((contains_lowercase(ltemp1) == num_alpha(ltemp1)) && *lfn == 0) /* Make sure all the letters are lower case. If not set lfn */
+		{
+			*res |= 0x08; /* lowercase basename without having to create longfilename */
+		}
+		else
+		{
+			*res = 0x00;
+			*lfn = 1;  /* Create a lfn because not the whole filename is lower case which can be an exception. I.E. we have something like this: "Delete.txt"
+			              instead of "delete.txt" */
+		}
+		
+		if(ltemp2 != NULL)
+		{
+			if((contains_lowercase(ltemp2) == num_alpha(ltemp2)) && *lfn == 0)
+			{
+				*res |= 0x10; /* lowercase extension without having to create longfilename */
+			}
+			else
+			{
+				*res = 0x00;
+				*lfn = 1;  /* Create a lfn because not the whole extenstion is lower case which can be an exception. I.E. we have something like this: "delete.Txt"
+							  instead of "delete.txt" */
+			}
+		}	
+		
+		free(lower);
 		
 		for(i = 0; i < strlen(fn_temp); i++)
 			fn_temp[i] = toupper((int)fn_temp[i]);
@@ -306,6 +362,42 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 		if(contains_lowercase(fn_temp))
 		{
 			unsigned int i;
+			
+			lower = malloc(strlen(fn_temp)+1);
+		
+			strncpy(lower, fn_temp, strlen(fn_temp));
+			lower[strlen(fn_temp)] = '\0';
+			
+			ltemp1 = strtok(lower, ".");
+			
+			ltemp2 = strtok(NULL, ".");
+			
+			if((contains_lowercase(ltemp1) == num_alpha(ltemp1)) && *lfn == 0) /* Make sure all the letters are lower case. If not set lfn */
+			{
+				*res |= 0x08; /* lowercase basename without having to create longfilename */
+			}
+			else
+			{
+				*res = 0x00;
+				*lfn = 1;  /* Create a lfn because not the whole filename is lower case which can be an exception. I.E. we have something like this: "Delete.txt"
+							  instead of "delete.txt" */
+			}
+			
+			if(ltemp2 != NULL)
+			{
+				if((contains_lowercase(ltemp2) == num_alpha(ltemp2)) && *lfn == 0)
+				{
+					*res |= 0x10; /* lowercase extension without having to create longfilename */
+				}
+				else
+				{
+					*res = 0x00;
+					*lfn = 1;  /* Create a lfn because not the whole extenstion is lower case which can be an exception. I.E. we have something like this: "delete.Txt"
+								  instead of "delete.txt" */
+				}
+			}
+			
+			free(lower);
 			
 			for(i = 0; i < strlen(fn_temp); i++)
 				fn_temp[i] = toupper((int)fn_temp[i]);
@@ -448,6 +540,7 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 		memcpy(sector + loc[1] + FILENAME, f_entry->FileName, 8);
 		memcpy(sector + loc[1] + EXTENSION, f_entry->Ext, 3);
 		memcpy(sector + loc[1] + ATTRIBUTE, &(f_entry->Attr), 1);
+		memcpy(sector + loc[1] + RESERVED, &(f_entry->Res), 1);
 		
 		memcpy(sector + loc[1] + CREATIONTIME, &(tme), 2);
 		memcpy(sector + loc[1] + CREATIONDATE, &(date), 2);

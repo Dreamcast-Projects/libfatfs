@@ -867,6 +867,8 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
 	int longfilename = 0;
 	char *shortname;
 	unsigned char checksum;
+	
+	unsigned char res = 0x00;
 
     fat_dir_entry_t entry;
 	fat_lfn_entry_t *lfn_entry_list[20];  /* Can have a maximum of 20 long file name entries */
@@ -874,7 +876,7 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
 	for(i = 0; i < 20; i++)
 		lfn_entry_list[i] = NULL;
     
-    shortname = generate_short_filename(newfile->Parent, entry_name, newfile->Attr, &longfilename);
+    shortname = generate_short_filename(newfile->Parent, entry_name, newfile->Attr, &longfilename, &res);
 	checksum = generate_checksum(shortname);
 	
 	newfile->ShortName = malloc(strlen(shortname) + 1);
@@ -929,6 +931,7 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
 	strncpy(entry.Ext, shortname+9, 3 ); /* Skip filename and '.' */
 	entry.Ext[3] = '\0';
 	entry.Attr = newfile->Attr;
+	entry.Res = res;
 	entry.FileSize = 0;   /* For both new files and new folders */
 	if(newfile->Attr & DIRECTORY)
 		entry.FstClusLO = newfile->Data_Clusters->Cluster_Num; /* Folder */
