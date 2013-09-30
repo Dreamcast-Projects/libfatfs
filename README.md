@@ -4,7 +4,7 @@
 This is library is an add on that can be used with KallistiOS to support FAT16 and FAT32 file systems on SD cards.
 Of course you will need an SD adaptor to use a SD card for the Sega Dreamcast. This compiles with the latest KallistiOS
 (as of 2013-09-13). Also, this library is in no way affiliated with or endorsed by the people behind KallistiOS because of 
-copyright(Microsoft) complications. I decided to go out on a limb and create the library anyway because I wanted to learn 
+patent(Microsoft) complications. I decided to go out on a limb and create the library anyway because I wanted to learn 
 the in's and out's of the FAT16 & FAT32 file systems and benefit software engineers who program for the Sega Dreamcast in 
 the process.
 
