@@ -1,5 +1,5 @@
-													LibFat2FS
-												for Sega Dreamcast
+												LibFat2FS
+											for Sega Dreamcast
 					   
 This is library is an add on that can be used with KallistiOS to support FAT16 and FAT32 file systems on SD cards.
 Of course you will need an SD adaptor to use a SD card for the Sega Dreamcast. This compiles with the latest KallistiOS
