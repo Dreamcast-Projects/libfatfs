@@ -16,7 +16,7 @@
 #include "dir_entry.h"
 #include "boot_sector.h"
 
-static short sector_offset = -1; /* Makes it to where we always have to read a sector (FAT table) */
+static short sector_offset = -1; /* Makes it to where we always have to read a sector (FAT table) first */
 static unsigned char buffer[512];
 
 /* Read the Fat table from the SD card and stores it in table */
@@ -163,7 +163,11 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 		cluster = malloc(sizeof(cluster_node_t));
 		cluster = build_cluster_linklist(rv, fat32_boot_ext.root_cluster);
 	}
-
+	
+	rv->mount = malloc(strlen(mp)+ 1);
+	strncpy(rv->mount, mp, strlen(mp));
+	rv->mount[strlen(mp)] = '\0';
+	
 	rv->root = malloc(sizeof(node_entry_t));
 	rv->root->Name = (unsigned char *)remove_all_chars(fmp, '/');          /*  */
 	rv->root->ShortName = (unsigned char *)remove_all_chars(fmp, '/');

@@ -55,7 +55,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
 
     memset(ufn, 0, strlen(fn)+4);    /* 4:  3 for "/sd" and 1 for null character */
 
-    strcat(ufn, "/sd");
+    strcat(ufn, mnt->fs->mount);
     strcat(ufn, fn);
 
     /* Make sure if we're going to be writing to the file that the fs is mounted
@@ -475,7 +475,7 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 	
 	memset(ufn, 0, strlen(fn)+4);    /* 4:  3 for "/sd" and 1 for null character */
 
-    strcat(ufn, "/sd");
+    strcat(ufn, mnt->fs->mount);
     strcat(ufn, fn);
 
     mutex_lock(&fat_mutex);
@@ -541,7 +541,7 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
 
     memset(ufn, 0, strlen(fn)+4);    /* 4:  3 for "/sd" and 1 for null character */
 
-    strcat(ufn, "/sd");
+    strcat(ufn, mnt->fs->mount);
     strcat(ufn, fn);
 
     /* Make sure there is a filename given */
@@ -619,7 +619,7 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 	
 	memset(ufn, 0, strlen(fn)+4);    /* 4:  3 for "/sd" and 1 for null character */
 
-    strcat(ufn, "/sd");
+    strcat(ufn, mnt->fs->mount);
     strcat(ufn, fn);
 
     mutex_lock(&fat_mutex);
@@ -837,8 +837,10 @@ int fs_fat_unmount(const char *mp) {
     }
 
     if(found) {
-		// Free the Directory tree fs->root
+		/* Free the Directory tree fs->root */
 		delete_directory_tree(i->fs->root);
+		
+		free(i->fs->mount); /* Free str mem */
 
         LIST_REMOVE(i, entry);
 

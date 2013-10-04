@@ -179,10 +179,13 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 	int var = 0;
 	int new_sector_loc = 0;
 	
+	static int contin = 0; /* Used for when long file names carry over to the next sector */
+	
 	unsigned char *str_temp;
 	unsigned char *buf = malloc(sizeof(unsigned char)*512);
-	unsigned char *lfnbuf1 = malloc(sizeof(unsigned char)*256); /* Longest a filename can be is 255 chars */
-	unsigned char *lfnbuf2 = malloc(sizeof(unsigned char)*256); /* Longest a filename can be is 255 chars */
+	
+	static unsigned char lfnbuf1[256]; /* Longest a filename can be is 255 chars */
+	static unsigned char lfnbuf2[256]; /* Longest a filename can be is 255 chars */
 	
 	fat_lfn_entry_t lfn;
 	fat_dir_entry_t temp;
@@ -190,8 +193,12 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 	node_entry_t    *child;
 	node_entry_t    *new_entry;
 
-	memset(lfnbuf1, 0, sizeof(unsigned char)*256);
-	memset(lfnbuf2, 0, sizeof(unsigned char)*256);
+	/* Only wipe if there wasnt a long file name entry in the last sector that wasnt attached to a shortname entry */
+	if(contin == 0)
+	{
+		memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+		memset(lfnbuf2, 0, sizeof(unsigned char)*256);
+	}
 	
 	/* Read 1 sector */
 	fat->dev->read_blocks(fat->dev, sector_loc, 1, buf);
@@ -232,6 +239,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 					memset(lfnbuf1, 0, sizeof(unsigned char)*256);
 				}
 			}
+			contin = 1;
 			var += ENTRYSIZE; 
 			continue; /* Continue on to the next entry */
 		}
@@ -320,7 +328,9 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 				strcpy(new_entry->ShortName, lfnbuf1);  
 				memset(lfnbuf1, 0, sizeof(unsigned char)*256);
 				memset(lfnbuf2, 0, sizeof(unsigned char)*256);
-			}			
+			}		
+
+			contin = 0;
 			
 			new_entry->Attr = temp.Attr;
 			new_entry->FileSize = temp.FileSize;
@@ -363,8 +373,6 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 	}
 	
 	free(buf);
-	free(lfnbuf1);
-	free(lfnbuf2);
 }
 
 unsigned char *fat_read_data(fatfs_t *fat, node_entry_t *file, int count, int pointer)
