@@ -28,7 +28,9 @@ struct fatfs
     /* Filesystem globals */ 
 	unsigned char    *mount;                   /* Save what the user mounts the sd card to e.g. "/sd" so I can add it back when certain functions(open, unlink, mkdir) are called */
 	unsigned short   fat_type;                 /* 0 - Fat16, 1 - Fat32 */
-	unsigned short   table_size;               /* */
+	unsigned short   table_size;               /* Number of sectors the FAT table uses */
+	unsigned short   byte_offset;              /* 2 - Fat16. 4 - Fat32 */
+	unsigned int     root_cluster_num;         /* Fat32 only. */
     unsigned short   root_dir_sectors_num;     /* The number of sectors the root directory consists of. Should be zero for Fat32 */
     unsigned short   root_dir_sec_loc;         /* The first sector where the root directory starts */
     unsigned short   file_alloc_tab_sec_loc;   /* The first sector where the fat allocation table starts */

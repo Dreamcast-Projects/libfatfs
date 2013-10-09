@@ -17,7 +17,7 @@ rm-elf:
 	-rm -f $(TARGET) romdisk.*
 
 $(TARGET): $(OBJS)
-	kos-cc -o $(TARGET) $(OBJS) -lfat2fs
+	kos-cc -o $(TARGET) $(OBJS) -lfatfs
 
 run: $(TARGET)
 	$(KOS_LOADER) $(TARGET)

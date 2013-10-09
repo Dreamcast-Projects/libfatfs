@@ -6,7 +6,7 @@
 #include <sys/cdefs.h>
 __BEGIN_DECLS
 
-/* #define FAT2FS_DEBUG 1 */
+/* #define FATFS_DEBUG 1 */
 
 #include <stdint.h>
 
@@ -74,7 +74,7 @@ typedef struct fat_BS
 
 int fat_read_bootsector __P((fat_BS_t *bs, kos_blockdev_t *bd));
 
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 void fat_print_bootsector __P((const fat_BS_t *bs));
 #endif
 

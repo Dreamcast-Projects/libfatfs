@@ -63,7 +63,6 @@ unsigned char * extract_long_name(fat_lfn_entry_t *lfn)
 
 cluster_node_t * build_cluster_linklist(fatfs_t *fat, int start_cluster)
 {
-	short byte_offset = (fat->fat_type == FAT16) ? 2 : 4;
     unsigned int cluster_num;
 	unsigned int end_of_list = (fat->fat_type == FAT16) ? 0xFFF8 : 0xFFFFFF8; 
 
@@ -80,7 +79,7 @@ cluster_node_t * build_cluster_linklist(fatfs_t *fat, int start_cluster)
 	
 	start->Cluster_Num = start_cluster;
 	start->Next = NULL;
-	cluster_num = read_fat_table_value(fat, start_cluster*byte_offset);
+	cluster_num = read_fat_table_value(fat, start_cluster*fat->byte_offset);
 	
 	if(fat->fat_type == FAT32)
 		cluster_num = cluster_num & 0x0FFFFFFF; /* Ignore the high 4 bits */
@@ -90,7 +89,7 @@ cluster_node_t * build_cluster_linklist(fatfs_t *fat, int start_cluster)
 		temp = temp->Next;
 		temp->Cluster_Num = cluster_num;
 		temp->Next = NULL;
-		cluster_num = read_fat_table_value(fat, cluster_num*byte_offset);
+		cluster_num = read_fat_table_value(fat, cluster_num*fat->byte_offset);
 		
 		if(fat->fat_type == FAT32)
 			cluster_num = cluster_num & 0x0FFFFFFF; /* Ignore the high 4 bits */
@@ -98,6 +97,8 @@ cluster_node_t * build_cluster_linklist(fatfs_t *fat, int start_cluster)
 	
 	return start;
 }
+
+#if defined (FATFS_CACHEALL) 
 
 node_entry_t * get_child_of_parent(node_entry_t *parent, unsigned char *child_name) {
     node_entry_t *child = parent->Children;
@@ -157,9 +158,9 @@ node_entry_t *fat_search_by_path(node_entry_t *root, const char *fn)
 			}
 			else 
 			{
-			#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 				printf("Couldnt find %s\n",pch);
-			#endif
+#endif
 				return NULL;
 			}
 		}
@@ -239,7 +240,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 					memset(lfnbuf1, 0, sizeof(unsigned char)*256);
 				}
 			}
-			contin = 1;
+			contin = 1; /* Makes sure that if this is the last entry in the sector that the long name will be saved when reading the next sector */
 			var += ENTRYSIZE; 
 			continue; /* Continue on to the next entry */
 		}
@@ -256,6 +257,8 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 			
 			temp.FileName[8] = '\0';
 			temp.Ext[3] = '\0';
+			
+			contin = 0;
 			
 			/* Dont care about these hidden entries */
 			if(strcmp(temp.FileName, ".       ") == 0 || strcmp(temp.FileName, "..      ") == 0)
@@ -329,8 +332,6 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 				memset(lfnbuf1, 0, sizeof(unsigned char)*256);
 				memset(lfnbuf2, 0, sizeof(unsigned char)*256);
 			}		
-
-			contin = 0;
 			
 			new_entry->Attr = temp.Attr;
 			new_entry->FileSize = temp.FileSize;
@@ -341,7 +342,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 			new_entry->Children = NULL;
 			new_entry->Next = NULL;
 			
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 			printf("FileName: %s ShortName: %s Parent: %s  Attr: %x Cluster: %d  \n", new_entry->Name, new_entry->ShortName, parent->Name, new_entry->Attr, temp.FstClusLO);
 #endif
 			
@@ -374,6 +375,8 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 	
 	free(buf);
 }
+
+#endif
 
 unsigned char *fat_read_data(fatfs_t *fat, node_entry_t *file, int count, int pointer)
 {
@@ -420,7 +423,7 @@ unsigned char *fat_read_data(fatfs_t *fat, node_entry_t *file, int count, int po
 		/* Read 1 sector */
 		if(fat->dev->read_blocks(fat->dev, sector_loc, 1, sector) != 0)
 		{
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 			printf("fat_read_data(dir_entry.c): Couldn't read the sector %d\n", sector_loc);
 #endif
 			return NULL;
@@ -489,7 +492,7 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 				{
 					if((node->Next = allocate_cluster(fat, file->Data_Clusters)) == NULL)
 					{
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 						printf("fat_write_data(dir_entry.c): All out of clusters to Allocate\n");
 #endif
 						return -1;
@@ -512,7 +515,7 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 		/* Read 1 sector */
 		if(fat->dev->read_blocks(fat->dev, sector_loc, 1, sector) != 0)
 		{
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 			printf("fat_write_data(dir_entry.c): Couldn't read the sector %d\n", sector_loc);
 #endif
 			return -1;
@@ -530,7 +533,7 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 		/* Write one sector */
 		if(fat->dev->write_blocks(fat->dev, sector_loc, 1, sector) != 0)
 		{
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 			printf("fat_write_data(dir_entry.c): Couldnt write the sector %d\n", sector_loc);
 #endif
 			return -1;
@@ -567,7 +570,7 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	/* Read sector */
 	if(fat->dev->read_blocks(fat->dev, file->Location[0], 1, sector) != 0)
 	{
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 		printf("update_fat_entry(dir_entry.c): Couldn't read the sector %d\n", file->Location[0]);
 #endif
 		return;
@@ -586,7 +589,7 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	/* Write it back */
 	if(fat->dev->write_blocks(fat->dev, file->Location[0], 1, sector) != 0)
 	{
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 		printf("update_fat_entry(dir_entry.c): Couldn't write the sector %d\n", file->Location[0]);
 #endif
 		return;
@@ -594,10 +597,12 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	
 	free(sector);
 	
+#if defined (FATFS_CACHEALL) 
 	if(file->Parent->Parent != NULL) /* If this file/folder is in a */
 	{                                /* subdirectory[Not the ROOT Directory] update it as well (recursively) */
 		update_fat_entry(fat, file->Parent);
 	}
+#endif
 }
 
 void delete_tree_entry(node_entry_t * node)
@@ -638,6 +643,8 @@ void delete_tree_entry(node_entry_t * node)
     node = NULL;
 }
 
+#if defined (FATFS_CACHEALL) 
+
 void delete_directory_tree(node_entry_t * node)
 {    
     if(node == NULL)
@@ -648,8 +655,8 @@ void delete_directory_tree(node_entry_t * node)
     
     if(node->Next == NULL && node->Children == NULL)
     {
-#ifdef FAT2FS_DEBUG
-		printf("DELETING FileName: %s ShortName: %s ", node->Name, node->ShortName);
+#ifdef FATFS_DEBUG
+		printf("DELETING Name: %s ShortName: %s ", node->Name, node->ShortName);
 		
 		if(node->Parent != NULL)
 			printf("Parent: %s \n", node->Parent->Name);
@@ -660,6 +667,8 @@ void delete_directory_tree(node_entry_t * node)
         delete_tree_entry(node);
     }
 }
+
+#endif
 
 cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
 {
@@ -686,10 +695,9 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
         /* If we found a free entry */
         if(cluster_num == 0x00) 
         {
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
             printf("allocate_cluster(dir_entry.c): Found a free cluster entry -- Index: %d\n", fat_index); 
 #endif
-		
             cluster_num = marker;
             if(cluster != NULL) /* Cant change what doesnt exist */
             {
@@ -708,7 +716,7 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
             fat_index++;
         }
     }
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 	printf("allocate_cluster(dir_entry.c): Didnt find a free Cluster\n");
 #endif
     
@@ -726,7 +734,7 @@ void delete_cluster_list(fatfs_t *fat, node_entry_t *f)
 	while(clust != NULL)
 	{
 		write_fat_table_value(fat, clust->Cluster_Num*byte_offset, clear);
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 		printf("delete_cluster_list(dir_entry.c) Freed Cluster: %d\n", clust->Cluster_Num);
 #endif
 		clust = clust->Next;
@@ -736,6 +744,8 @@ void delete_cluster_list(fatfs_t *fat, node_entry_t *f)
 	
 	f->Data_Clusters = NULL;
 }
+
+#if defined (FATFS_CACHEALL) 
 
 node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned char attr)
 {
@@ -827,7 +837,7 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
                 
                 if(generate_and_write_entry(fat, entry_filename, newfile) == -1)
                 {
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 					printf("create_entry(dir_entry.c) : Didnt Create file/folder\n");
 #endif
                     delete_tree_entry(newfile);  /* This doesn't take care of removing clusters from SD card */
@@ -865,6 +875,8 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
     return NULL;
 }
 
+#endif
+
 int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfile)
 {
 	int i;
@@ -884,7 +896,7 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
 	for(i = 0; i < 20; i++)
 		lfn_entry_list[i] = NULL;
     
-    shortname = generate_short_filename(newfile->Parent, entry_name, newfile->Attr, &longfilename, &res);
+    shortname = generate_short_filename(fat, newfile->Parent, entry_name, newfile->Attr, &longfilename, &res);
 	checksum = generate_checksum(shortname);
 	
 	newfile->ShortName = malloc(strlen(shortname) + 1);
@@ -1017,3 +1029,590 @@ void delete_entry(fatfs_t *fat, node_entry_t *file)
 	
 	fat->dev->write_blocks(fat->dev, file->Location[0], 1, sector);
 }
+
+#if !defined (FATFS_CACHEALL)
+
+node_entry_t *fat_search_by_path(fatfs_t *fat, const char *fn)
+{
+	int i = 0;
+	char c;
+	
+	unsigned char *ufn = malloc(strlen(fn)+1);
+	unsigned char *pch = NULL;
+	node_entry_t *temp = NULL;
+	node_entry_t *rv = NULL;
+	cluster_node_t *cluster = NULL;
+	
+	if(fat->fat_type == FAT32)
+	{
+		cluster = malloc(sizeof(cluster_node_t));
+		cluster = build_cluster_linklist(fat, fat->root_cluster_num);
+	}
+	
+	/* Make sure the files/folders are captialized */
+    while (fn[i])
+    {
+       c = fn[i];
+       ufn[i] = toupper((int)c);
+       i++;
+    }
+	ufn[strlen(fn)] = '\0';
+	
+	/* Build Root */
+	temp = malloc(sizeof(node_entry_t));
+	temp->Name = (unsigned char *)remove_all_chars(fat->mount, '/');          /*  */
+	temp->ShortName = (unsigned char *)remove_all_chars(fat->mount, '/');
+	temp->Attr = DIRECTORY;           /* Root directory is obviously a directory */
+	temp->Data_Clusters = cluster;    /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
+	temp->Parent = NULL;              /* Should always be NULL for root*/
+	temp->Children = NULL;            /* Changes when Directory Tree is built */
+	temp->Next = NULL;                /* Should always be NULL. Root is the top most directory and has no equal */
+	
+	rv = temp;
+	
+	pch = strtok(ufn,"/");  /* Grab Root */
+	
+    if(strcmp(pch, temp->Name) == 0) {
+        pch = strtok (NULL, "/"); 
+
+        while(pch != NULL) {
+            if((rv = search_directory(fat, temp, pch)) != NULL) 
+            {
+				pch = strtok (NULL, "/");
+				delete_tree_entry(temp);
+				temp = rv;
+			}
+			else 
+			{
+#ifdef FATFS_DEBUG
+				printf("Couldnt find %s\n",pch);
+#endif
+				free(ufn);
+				return NULL;
+			}
+		}
+	}
+	
+	free(ufn);
+	return rv;
+}
+
+node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
+{
+    char *pch;
+    char *filename;
+    char *entry_filename;
+	char *ufn = malloc(strlen(fn)+1);
+    
+    node_entry_t *newfile;
+	node_entry_t *temp = NULL;
+	node_entry_t *rv = NULL;
+	cluster_node_t *cluster = NULL;
+	
+	if(fat->fat_type == FAT32)
+	{
+		cluster = malloc(sizeof(cluster_node_t));
+		cluster = build_cluster_linklist(fat, fat->root_cluster_num);
+	}
+	
+	/* Make a copy of fn */
+	strncpy(ufn, fn, strlen(fn));
+	ufn[strlen(fn)] = '\0';
+	
+	/* Build Root */
+	temp = malloc(sizeof(node_entry_t));
+	temp->Name = (unsigned char *)remove_all_chars(fat->mount, '/');          /*  */
+	temp->ShortName = (unsigned char *)remove_all_chars(fat->mount, '/');
+	temp->Attr = DIRECTORY;           /* Root directory is obviously a directory */
+	temp->Data_Clusters = cluster;    /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
+	temp->Parent = NULL;              /* Should always be NULL for root*/
+	temp->Children = NULL;            /* Changes when Directory Tree is built */
+	temp->Next = NULL;                /* Should always be NULL. Root is the top most directory and has no equal */
+	
+	rv = temp;
+	
+	pch = strtok(ufn,"/");  /* Grab Root */
+	
+    if(strcmp(pch, temp->Name) == 0) {
+        pch = strtok (NULL, "/"); 
+
+        while(pch != NULL) {
+            if((rv = search_directory(fat, temp, pch)) != NULL) 
+            {
+				if(rv->Attr & READ_ONLY) /* Check and make sure directory is not read only. */
+				{
+					free(ufn);
+					errno = EROFS;
+					delete_tree_entry(temp);
+					delete_tree_entry(rv);
+					return NULL;
+				}
+				
+                pch = strtok (NULL, "/");
+                delete_tree_entry(temp);
+				temp = rv;
+            }
+            else 
+            {	
+				filename = pch; /* We possibly have the filename */
+                
+                /* Return NULL if we encounter a directory that doesn't exist */
+                if((pch = strtok (NULL, "/"))) { /* See if there is more to parse through */
+					free(ufn);
+                    errno = ENOTDIR;
+					delete_tree_entry(temp);
+                    return NULL;               /* if there is that means we are looking in a directory */
+                }                              /* that doesn't exist. */
+                
+                /* Make sure the filename is valid */
+                if(correct_filename(filename) == -1) {
+					free(ufn);
+					delete_tree_entry(temp);
+                    return NULL;
+                }
+                
+                /* Directory trees file/folder names are always capitalized 
+                   Make sure we get the original case of the file/folder name to save to SD */
+                entry_filename = malloc(strlen(filename) + 1);
+                memset(entry_filename, 0, strlen(filename) + 1);
+                strncpy(entry_filename, fn + (strlen(fn) - strlen(filename)), strlen(filename));
+                entry_filename[strlen(filename)] = '\0';
+           
+                /* Create file/folder */
+                newfile = (node_entry_t *) malloc(sizeof(node_entry_t));
+				
+                newfile->Name = malloc(strlen(filename)+1); 
+				strncpy(newfile->Name, filename, strlen(filename));
+				newfile->Name[strlen(filename)] = '\0';
+				
+                newfile->Attr = attr;
+                newfile->FileSize = 0;
+                newfile->Data_Clusters = NULL; 
+                newfile->Parent = temp;
+                newfile->Children = NULL;  
+                newfile->Next = NULL;      /* Adding to end of Parent(var child) list of children */
+                
+                if(generate_and_write_entry(fat, entry_filename, newfile) == -1)
+                {
+#ifdef FATFS_DEBUG
+					printf("create_entry(dir_entry.c) : Didnt Create file/folder\n");
+#endif
+					free(ufn);
+					errno = EDQUOT;
+					delete_tree_entry(temp);
+                    delete_tree_entry(newfile);  /* This doesn't take care of removing clusters from SD card */
+                    
+                    return NULL;  
+                }
+				
+				free(ufn);
+				delete_tree_entry(temp);
+				newfile->Parent = NULL;
+				
+                return newfile;
+            }
+		}
+	}
+	
+	free(ufn);
+	delete_tree_entry(temp);
+	
+	 /* Path was invalid from the beginning */
+    errno = ENOTDIR;
+    return NULL;
+}
+
+node_entry_t *search_directory(fatfs_t *fat, node_entry_t *node, const char *fn)
+{
+	int i;
+	unsigned int sector_loc = 0;
+	
+	cluster_node_t  *clust = node->Data_Clusters;
+	node_entry_t    *rv = NULL;
+
+	/* If the directory is the root directory and if fat->fat_type = FAT16 consider it a special case */
+	if(strcmp(node->Name, fat->mount) == 0 && fat->fat_type == FAT16) /* Go through special(static number) sectors. No clusters. */
+	{
+		for(i = 0; i < fat->root_dir_sectors_num; i++) {
+		
+			sector_loc = fat->root_dir_sec_loc + i;
+			
+			/* Search in a sector for fn */
+			rv = browse_sector(fat, sector_loc, 0, fn);
+			
+			if(rv != NULL) /* If we found it return it, otherwise go to the next sector */
+			{
+				return rv;
+			}
+		}
+	}
+	else /* Go through clusters/sectors */
+	{
+		while(clust != NULL)
+		{
+			/* Go through all the sectors in this cluster */
+			for(i = 0; i < fat->boot_sector.sectors_per_cluster; i++)
+			{
+				sector_loc = fat->data_sec_loc + ((clust->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster) + i;
+				
+				/* Search in a sector for fn */
+				rv = browse_sector(fat, sector_loc, 0, fn);
+			
+				if(rv != NULL) /* If we found it return it, otherwise go to the next sector */
+				{
+					return rv;
+				}
+			}
+			
+			/* Advance to next cluster */
+			clust = clust->Next;
+		}
+	}
+	
+	return NULL;
+}
+
+/* If fn is NULL, then just grab the first entry encountered */
+node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int ptr, const char *fn)
+{
+	int i, j;
+	int var = ptr;
+	static int contin = 0;
+	unsigned char *str_temp;
+	unsigned char *buf = malloc(sizeof(unsigned char)*512);
+	
+	fat_lfn_entry_t lfn;
+	fat_dir_entry_t temp;
+	
+	static unsigned char lfnbuf1[256]; /* Longest a filename can be is 255 chars */
+	static unsigned char lfnbuf2[256]; /* Longest a filename can be is 255 chars */
+	
+	node_entry_t    *new_entry;
+	
+	/* Only wipe if there wasnt a long file name entry in the last sector that wasnt attached to a shortname entry */
+	if(contin == 0)
+	{
+		memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+		memset(lfnbuf2, 0, sizeof(unsigned char)*256);
+	}
+
+	/* Read 1 sector */
+	fat->dev->read_blocks(fat->dev, sector_loc, 1, buf);
+	
+	for(j = var/32; j < 16; j++) /* How many entries per sector(32 byte entry x 16 = 512 bytes = 1 sector) */
+	{
+		/* Entry does not exist if it has been deleted(0xE5) or is an empty entry(0) */
+		if((buf+var)[0] == DELETED || (buf+var)[0] == EMPTY) 
+		{ 
+			var += ENTRYSIZE; /* Increment to next entry */
+			continue; 
+		}
+		
+		/* Check if it is a long filename entry */
+		if((buf+var)[ATTRIBUTE] == LONGFILENAME) { 
+			memset(&lfn, 0, sizeof(fat_lfn_entry_t));
+			memcpy(&lfn, buf+var, sizeof(fat_lfn_entry_t));
+		
+			if(lfnbuf1[0] == '\0') 
+			{
+				str_temp = extract_long_name(&lfn);
+				strcpy(lfnbuf1, str_temp);
+				free(str_temp);
+				
+				if(lfnbuf2[0] != '\0') {
+					strcat(lfnbuf1, lfnbuf2);
+					memset(lfnbuf2, 0, sizeof(unsigned char)*256);
+				}
+			}
+			else if(lfnbuf2[0] == '\0')
+			{
+				str_temp = extract_long_name(&lfn);
+				strcpy(lfnbuf2, str_temp);
+				free(str_temp);
+				
+				if(lfnbuf1[0] != '\0') {
+					strcat(lfnbuf2, lfnbuf1);
+					memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+				}
+			}
+			contin = 1;
+			var += ENTRYSIZE; 
+			continue; /* Continue on to the next entry */
+		}
+		
+		/* Its a file/folder entry */
+		else {
+			memset(&temp, 0, sizeof(fat_dir_entry_t));	
+			
+			memcpy(temp.FileName, (buf+var+FILENAME), 8); 
+			memcpy(temp.Ext, (buf+var+EXTENSION), 3);
+			memcpy(&(temp.Attr), (buf+var+ATTRIBUTE), 1);
+			memcpy(&(temp.FstClusLO), (buf+var+STARTCLUSTER), 2);
+			memcpy(&(temp.FileSize), (buf+var+FILESIZE), 4);
+			
+			temp.FileName[8] = '\0';
+			temp.Ext[3] = '\0';
+			
+			contin = 0;
+			
+			/* Dont care about these hidden entries */
+			if(strcmp(temp.FileName, ".       ") == 0 || strcmp(temp.FileName, "..      ") == 0)
+			{
+				var += ENTRYSIZE; 
+				continue; /* Continue on to the next entry */
+			}
+			
+			/* Deal with no long name */
+			if(lfnbuf1[0] == '\0' && lfnbuf2[0] == '\0')
+			{
+				strcat(lfnbuf1, temp.FileName);
+				if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
+					if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
+						strcat(lfnbuf1, temp.Ext);
+					}
+					else {
+						strcat(lfnbuf1, ".");
+						strcat(lfnbuf1, temp.Ext);
+					}
+				}
+				
+				str_temp = remove_all_chars(lfnbuf1,' '); 
+				strcpy(lfnbuf1, str_temp);
+				free(str_temp);
+				
+				if(fn == NULL || strcasecmp(lfnbuf1, fn) == 0) /* We found the file we are looking for */
+				{
+					new_entry = malloc(sizeof(node_entry_t));
+					new_entry->Name = malloc(strlen(lfnbuf1));
+					new_entry->ShortName = malloc(strlen(lfnbuf1));
+					strcpy(new_entry->Name, lfnbuf1);
+					strcpy(new_entry->ShortName, lfnbuf1);  
+					memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+				}
+				else
+				{
+					var += ENTRYSIZE; 
+					memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+					memset(lfnbuf2, 0, sizeof(unsigned char)*256);
+					continue; /* Continue on to the next entry */
+				}
+			}
+			else if(lfnbuf1[0] != '\0')
+			{
+				strcat(lfnbuf2, temp.FileName);
+				if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
+					if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
+						strcat(lfnbuf2, temp.Ext);
+					}
+					else {
+						strcat(lfnbuf2, ".");
+						strcat(lfnbuf2, temp.Ext);
+					}
+				}
+				
+				if(fn == NULL || strcasecmp(lfnbuf1, fn) == 0 || strcasecmp(lfnbuf2, fn) == 0) 
+				{
+					new_entry = malloc(sizeof(node_entry_t));
+					new_entry->Name = malloc(strlen(lfnbuf1));
+					new_entry->ShortName = malloc(strlen(lfnbuf2));
+					strcpy(new_entry->Name, lfnbuf1);
+					strcpy(new_entry->ShortName, lfnbuf2);  
+					memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+					memset(lfnbuf2, 0, sizeof(unsigned char)*256);
+				}
+				else
+				{
+					var += ENTRYSIZE; 
+					memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+					memset(lfnbuf2, 0, sizeof(unsigned char)*256);
+					continue; /* Continue on to the next entry */
+				}
+			}
+			else {
+				strcat(lfnbuf1, temp.FileName);
+				if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
+					if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
+						strcat(lfnbuf1, temp.Ext);
+					}
+					else {
+						strcat(lfnbuf1, ".");
+						strcat(lfnbuf1, temp.Ext);
+					}
+				}
+				
+				if(fn == NULL || strcasecmp(lfnbuf1, fn) == 0 || strcasecmp(lfnbuf2, fn) == 0) 
+				{
+					new_entry = malloc(sizeof(node_entry_t));
+					new_entry->Name = malloc(strlen(lfnbuf2));
+					new_entry->ShortName = malloc(strlen(lfnbuf1));
+					strcpy(new_entry->Name, lfnbuf2);
+					strcpy(new_entry->ShortName, lfnbuf1);  
+					memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+					memset(lfnbuf2, 0, sizeof(unsigned char)*256);
+				}
+				else
+				{
+					var += ENTRYSIZE; 
+					memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+					memset(lfnbuf2, 0, sizeof(unsigned char)*256);
+					continue; /* Continue on to the next entry */
+				}
+			}		
+			
+			new_entry->Attr = temp.Attr;
+			new_entry->FileSize = temp.FileSize;
+			new_entry->Data_Clusters = build_cluster_linklist(fat, temp.FstClusLO);
+			new_entry->Location[0] = sector_loc; 
+			new_entry->Location[1] = var; /* Byte in sector */
+			new_entry->Parent = NULL;
+			new_entry->Children = NULL;
+			new_entry->Next = NULL;
+			
+#ifdef FATFS_DEBUG
+			printf("FileName: %s ShortName: %s Attr: %x Cluster: %d  \n", new_entry->Name, new_entry->ShortName, new_entry->Attr, temp.FstClusLO);
+#endif
+			free(buf);
+			
+			return new_entry;
+		}
+	}
+	
+	free(buf);
+	return NULL; /* Didnt find file/folder named 'fn' it in this sector */
+}
+
+
+node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last_entry)
+{
+	int i;
+	unsigned int ptr;
+	unsigned int sector_loc;
+	unsigned int clust_sector_loc;
+	cluster_node_t  *clust = dir->Data_Clusters;
+	
+	node_entry_t    *new_entry;
+	node_entry_t    *rv = NULL;
+	
+	/* Start from the beginning */
+	if(last_entry == NULL)
+	{
+		ptr = 0;
+		
+		if(clust != NULL)
+		{
+			sector_loc = fat->data_sec_loc + ((clust->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster);
+		}
+		else /* Fat16 Root Directory */
+		{
+			sector_loc = fat->root_dir_sec_loc;
+		}
+	}
+	/* Start from the last entry */
+	else 
+	{
+		ptr = last_entry->Location[1];
+		sector_loc = last_entry->Location[0];
+		
+		if(clust != NULL)
+		{	
+			/* Determine cluster(based on sector) */
+			while(clust != NULL)
+			{
+				clust_sector_loc = fat->data_sec_loc + ((clust->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster);
+				
+				/* If the sector is located in the range of this cluster, break out and use this cluster */
+				if(sector_loc >= clust_sector_loc && sector_loc < (fat->boot_sector.sectors_per_cluster + clust_sector_loc))
+				{
+					break;
+				}
+				
+				clust = clust->Next; /* Otherwise continue to the next cluster */
+			}
+		}
+		
+		ptr += 32; /* Go to the next entry */
+		
+		if(ptr >= 512)
+		{
+			ptr = 0;
+			sector_loc += 1;
+		}
+		
+		if(clust != NULL)
+		{
+			clust_sector_loc = fat->data_sec_loc + ((clust->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster);
+				
+			/* If the sector is located in the range of this cluster, break out and use this cluster */
+			if(!(sector_loc >= clust_sector_loc && sector_loc < (fat->boot_sector.sectors_per_cluster + clust_sector_loc)))
+			{
+				clust = clust->Next;
+				
+				if(clust != NULL)
+				{
+					sector_loc = fat->data_sec_loc + ((clust->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster);
+				}
+			}
+		}
+		else if(strcmp(dir->Name, fat->mount) == 0 && fat->fat_type == FAT16) /* Fat16 Root Directory */
+		{
+			if(sector_loc >= (fat->root_dir_sec_loc + fat->root_dir_sectors_num))
+				return NULL;
+		}
+	}
+	
+	/* If the directory is the root directory and if fat->fat_type = FAT16 consider it a special case */
+	if(strcmp(dir->Name, fat->mount) == 0 && clust == NULL && fat->fat_type == FAT16) /* Go through special(static number) sectors. No clusters. */
+	{
+		for(i = (sector_loc - fat->root_dir_sec_loc); i < fat->root_dir_sectors_num; i++) 
+		{
+			sector_loc = fat->root_dir_sec_loc + i;
+			
+			rv = browse_sector(fat, sector_loc, ptr, NULL);
+			
+			if(rv != NULL) /* If we found one return it, otherwise go to the next sector */
+			{
+				return rv;
+			}
+			
+			ptr = 0;
+		}
+	}
+	else /* Go through clusters/sectors */
+	{
+		while(clust != NULL)
+		{
+			clust_sector_loc = fat->data_sec_loc + ((clust->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster);
+			
+			/* Go through all the sectors in this cluster */
+			for(i = (sector_loc - clust_sector_loc); i < fat->boot_sector.sectors_per_cluster; i++)
+			{
+				sector_loc = clust_sector_loc + i;
+			
+				rv = browse_sector(fat, sector_loc, ptr, NULL);
+				
+				if(rv != NULL) /* If we found one return it, otherwise go to the next sector */
+				{
+					return rv;
+				}
+				
+				ptr = 0;
+			}
+			
+			/* Advance to next cluster */
+			clust = clust->Next;
+			
+			ptr = 0;
+			
+			if(clust != NULL)
+			{
+				sector_loc = fat->data_sec_loc + ((clust->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster);
+			}
+		}
+	}
+	
+	return NULL;
+}
+
+#endif
+
+

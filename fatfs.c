@@ -75,7 +75,7 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
     unsigned int i;
 	
 	char c;
-	char *fmp = malloc(strlen(mp)+1);
+	char *fmp = NULL; 
     fatfs_t *rv;
 	
 	/* For Fat32 */
@@ -84,6 +84,7 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	cluster_node_t  *cluster = NULL;
 	cluster_node_t  *node = NULL;
 	
+	fmp = malloc(strlen(mp)+1);
 	memset(fmp, 0, strlen(mp)+1);
 	
 	i = 0;
@@ -113,13 +114,15 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 		return NULL;
    	}
 
-	#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 	fat_print_bootsector(&(rv->boot_sector));
-	#endif
+#endif
 
 	if(rv->boot_sector.table_size_16 > 0)
 	{
 		rv->fat_type = FAT16;
+		rv->byte_offset = 2;
+		rv->root_cluster_num = 0; /* Not used. Set it to zero */
 		rv->table_size = rv->boot_sector.table_size_16;
 		rv->root_dir_sectors_num = ((rv->boot_sector.root_entry_count * ENTRYSIZE) + (rv->boot_sector.bytes_per_sector - 1)) / rv->boot_sector.bytes_per_sector;
 		rv->root_dir_sec_loc = rv->boot_sector.reserved_sector_count + (rv->boot_sector.table_count * rv->boot_sector.table_size_16); 
@@ -128,11 +131,12 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	}
 	else
 	{
-		
 		memset(&fat32_boot_ext, 0, sizeof(fat_extBS_32_t));
 		memcpy(&fat32_boot_ext, &(rv->boot_sector.extended_section), sizeof(fat_extBS_32_t));
 		
 		rv->fat_type = FAT32;
+		rv->byte_offset = 4;
+		rv->root_cluster_num = fat32_boot_ext.root_cluster;
 		rv->table_size = fat32_boot_ext.table_size_32;
 		rv->root_dir_sectors_num = 0;
 		rv->root_dir_sec_loc = rv->boot_sector.reserved_sector_count + (rv->boot_sector.table_count * fat32_boot_ext.table_size_32); 
@@ -148,7 +152,7 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	
 	rv->total_clusters_num = rv->data_sectors_num/rv->boot_sector.sectors_per_cluster;
 	
-	#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 	printf("Number of sectors the FAT table takes up: %d\n", rv->table_size);
 	printf("Root directory number of sectors: %d\n", rv->root_dir_sectors_num);
 	printf("Root directory sector location: %d\n", rv->root_dir_sec_loc);
@@ -156,17 +160,19 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	printf("File/folder data starts at sector: %d\n", rv->data_sec_loc);
 	printf("Total number of data sectors: %d\n", rv->data_sectors_num);
 	printf("Total number of clusters: %d\n\n\n", rv->total_clusters_num);
-	#endif
+#endif
+	
+	rv->mount = malloc(strlen(fmp)+ 1);
+	strncpy(rv->mount, fmp, strlen(fmp));
+	rv->mount[strlen(fmp)] = '\0';
+	
+#if defined (FATFS_CACHEALL) 
 	
 	if(rv->fat_type == FAT32)
 	{
 		cluster = malloc(sizeof(cluster_node_t));
 		cluster = build_cluster_linklist(rv, fat32_boot_ext.root_cluster);
 	}
-	
-	rv->mount = malloc(strlen(mp)+ 1);
-	strncpy(rv->mount, mp, strlen(mp));
-	rv->mount[strlen(mp)] = '\0';
 	
 	rv->root = malloc(sizeof(node_entry_t));
 	rv->root->Name = (unsigned char *)remove_all_chars(fmp, '/');          /*  */
@@ -196,6 +202,10 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 			node = node->Next;
 		} while(node != NULL);
 	}
+	
+	free(fmp);
+	
+#endif
 	
 	return rv;
 }

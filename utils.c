@@ -108,7 +108,7 @@ int correct_filename(const char* str)
    /* Make sure the string is long and short enough */
    if(strlen(str) > 255 || strlen(str) <= 0)
    {
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
        printf("Invalid filename, strlen: %d\n", strlen(str)); 
 #endif
        errno = ENAMETOOLONG;
@@ -119,7 +119,7 @@ int correct_filename(const char* str)
    {
        if (strchr(invalid_characters, *c))
        {
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
           printf("Invalid filename, char found: %c\n", *c); 
 #endif
           errno = ENAMETOOLONG;
@@ -132,7 +132,7 @@ int correct_filename(const char* str)
    return 0;
 }
 
-char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char attr, int *lfn, unsigned char *res)
+char *generate_short_filename(fatfs_t *fat, node_entry_t *curdir, char * fn, unsigned char attr, int *lfn, unsigned char *res)
 {
 	int diff = 1;
 	
@@ -196,11 +196,13 @@ char *generate_short_filename(node_entry_t *curdir, char * fn, unsigned char att
 	}
 	
 	/* Pad with spaces if need be */
-	while(strlen(filename) < 8) /* Append spaces to fill end */
+	/*
+	while(strlen(filename) < 8) 
 		strcat(filename, " ");
-		
+	*/	
 	while(strlen(ext) < 3)
 		strcat(ext, " ");
+	
 
 /*
 4. If the name does not contain an extension then truncate it to 6 characters. If the names does contain
@@ -243,7 +245,6 @@ always added to help reduce the conflicts in the 8.3 name space for automatic ge
 		strcat(temp1, ext);
 		
 		fn_temp = temp1; /* Contains the filename and ext */
-		
 		*lfn = 1; /* This needs a long file name entry */
 	}
 	else
@@ -252,15 +253,19 @@ always added to help reduce the conflicts in the 8.3 name space for automatic ge
 		memset(temp1, 0, strlen(fn)+1);
 		strcat(temp1, filename);
 		
-		
+		/*
 		if(attr == DIRECTORY && ext[0] != ' ')
 		{
-			/* Append the Value
+			// Append the Value
 			memset(integer_string, 0, 7);
 			sprintf(integer_string, "~%d", diff++); // Increment diff here for maybe future use
 			strcat(temp1, integer_string);
-			*/
+			
 		}
+		*/
+		
+		while(strlen(temp1) < 8) 
+			strcat(temp1, " ");
 		
 		
 		/* Append the period */
@@ -288,7 +293,7 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 		unsigned int i;
 		
 		lower = malloc(strlen(fn_temp)+1);
-		
+	
 		strncpy(lower, fn_temp, strlen(fn_temp));
 		lower[strlen(fn_temp)] = '\0';
 		
@@ -296,30 +301,36 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 		
 		ltemp2 = strtok(NULL, ".");
 		
-		if((contains_lowercase(ltemp1) == num_alpha(ltemp1)) && *lfn == 0) /* Make sure all the letters are lower case. If not set lfn */
+		if(contains_lowercase(ltemp1) > 0)
 		{
-			*res |= 0x08; /* lowercase basename without having to create longfilename */
-		}
-		else
-		{
-			*res = 0x00;
-			*lfn = 1;  /* Create a lfn because not the whole filename is lower case which can be an exception. I.E. we have something like this: "Delete.txt"
-			              instead of "delete.txt" */
-		}
-		
-		if(ltemp2 != NULL)
-		{
-			if((contains_lowercase(ltemp2) == num_alpha(ltemp2)) && *lfn == 0)
+			if((contains_lowercase(ltemp1) == num_alpha(ltemp1)) && *lfn == 0) /* Make sure all the letters are lower case. If not set lfn */
 			{
-				*res |= 0x10; /* lowercase extension without having to create longfilename */
+				*res |= 0x08; /* lowercase basename without having to create longfilename */
 			}
 			else
 			{
 				*res = 0x00;
-				*lfn = 1;  /* Create a lfn because not the whole extenstion is lower case which can be an exception. I.E. we have something like this: "delete.Txt"
+				*lfn = 1;  /* Create a lfn because not the whole filename is lower case which can be an exception. I.E. we have something like this: "Delete.txt"
 							  instead of "delete.txt" */
 			}
-		}	
+		}
+		
+		if(ltemp2 != NULL)
+		{
+			if(contains_lowercase(ltemp2) > 0)
+			{
+				if((contains_lowercase(ltemp2) == num_alpha(ltemp2)) && *lfn == 0)
+				{
+					*res |= 0x10; /* lowercase extension without having to create longfilename */
+				}
+				else
+				{
+					*res = 0x00;
+					*lfn = 1;  /* Create a lfn because not the whole extenstion is lower case which can be an exception. I.E. we have something like this: "delete.Txt"
+								  instead of "delete.txt" */
+				}
+			}
+		}
 		
 		free(lower);
 		
@@ -327,12 +338,17 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 			fn_temp[i] = toupper((int)fn_temp[i]);
 	}
 
+
+#if defined (FATFS_CACHEALL) 
 	/* Should not have the same name of any other file/folder in this current directory */
 	while(get_child_of_parent(curdir, fn_temp) != NULL) 
+#else
+	while(search_directory(fat, curdir, fn_temp) != NULL)
+#endif
 	{
 		if(diff > 99999)
 		{
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 			printf("Too many entries(Short Entry Name) with the same name \n");
 #endif
 			return NULL;
@@ -345,8 +361,18 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 		memset(integer_string, 0, 7);
 		sprintf(integer_string, "~%d", diff++); /* Increment diff here for maybe future use */
 		
-		/* Change temp according to the strlen of strlen(integer_string) [~##] */
-		memcpy(temp1 + (8 - strlen(integer_string)), integer_string, strlen(integer_string));
+		if((strlen(temp1) + strlen(integer_string)) <= 8)
+		{
+			strcat(temp1, integer_string);
+			
+			while(strlen(temp1) < 8) 
+				strcat(temp1, " ");
+		}
+		else
+		{
+			/* Change temp according to the strlen of strlen(integer_string) [~##] */
+			memcpy(temp1 + (8 - strlen(integer_string)), integer_string, strlen(integer_string));
+		}
 		
 		temp1[8] = '\0';
 		
@@ -372,28 +398,36 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 			
 			ltemp2 = strtok(NULL, ".");
 			
-			if((contains_lowercase(ltemp1) == num_alpha(ltemp1)) && *lfn == 0) /* Make sure all the letters are lower case. If not set lfn */
+			if(contains_lowercase(ltemp1) > 0)
 			{
-				*res |= 0x08; /* lowercase basename without having to create longfilename */
-			}
-			else
-			{
-				*res = 0x00;
-				*lfn = 1;  /* Create a lfn because not the whole filename is lower case which can be an exception. I.E. we have something like this: "Delete.txt"
-							  instead of "delete.txt" */
-			}
-			
-			if(ltemp2 != NULL)
-			{
-				if((contains_lowercase(ltemp2) == num_alpha(ltemp2)) && *lfn == 0)
+				if((contains_lowercase(ltemp1) == num_alpha(ltemp1)) && *lfn == 0) /* Make sure all the letters are lower case. If not set lfn */
 				{
-					*res |= 0x10; /* lowercase extension without having to create longfilename */
+					*res |= 0x08; /* lowercase basename without having to create longfilename */
 				}
 				else
 				{
 					*res = 0x00;
-					*lfn = 1;  /* Create a lfn because not the whole extenstion is lower case which can be an exception. I.E. we have something like this: "delete.Txt"
+					printf("Number of lower case letters in FN doesnt equal to the amount of letters\n");
+					*lfn = 1;  /* Create a lfn because not the whole filename is lower case which can be an exception. I.E. we have something like this: "Delete.txt"
 								  instead of "delete.txt" */
+				}
+			}
+			
+			if(ltemp2 != NULL)
+			{
+				if(contains_lowercase(ltemp2) > 0)
+				{
+					if((contains_lowercase(ltemp2) == num_alpha(ltemp2)) && *lfn == 0)
+					{
+						*res |= 0x10; /* lowercase extension without having to create longfilename */
+					}
+					else
+					{
+						*res = 0x00;
+						printf("Number of lower case letters in EXT doesnt equal to the amount of letters\n");
+						*lfn = 1;  /* Create a lfn because not the whole extenstion is lower case which can be an exception. I.E. we have something like this: "delete.Txt"
+									  instead of "delete.txt" */
+					}
 				}
 			}
 			
@@ -573,7 +607,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	locations[0] = -1;
 	locations[1] = -1;
 	
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 	printf("Trying to create the file in this directory: %s\n", curdir->Name);
 #endif
 	
@@ -754,4 +788,16 @@ y  y  y  y  y  y  y  m  m  m  m  d  d  d  d  d
 	date = (((y & 0x7F) << 9) | ((m & 0x0F) << 5) | (d & 0x1F));
 	
 	return date;
+}
+
+int strcasecmp( const char *s1, const char *s2 )
+{
+	int c1, c2;
+	for(;;)
+	{
+		c1 = tolower( (unsigned char) *s1++ );
+		c2 = tolower( (unsigned char) *s2++ );
+		if (c1 == 0 || c1 != c2)
+			return c1 - c2;
+	}
 }

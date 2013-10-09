@@ -133,22 +133,30 @@ struct node_entry {
 };
 
 /* Prototypes */
+cluster_node_t * build_cluster_linklist(fatfs_t *fat, int start_cluster);
 int generate_and_write_entry(fatfs_t *fat, char *filename, node_entry_t *newfile);
 void delete_entry(fatfs_t *fat, node_entry_t *file);
-node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned char attr);
 cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster);
 void delete_cluster_list(fatfs_t *fat, node_entry_t *file);
 void delete_tree_entry(node_entry_t * node);
-void delete_directory_tree(node_entry_t * node);
+
 void update_fat_entry(fatfs_t *fat, node_entry_t *file);
 int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int count, int ptr);
 unsigned char *fat_read_data(fatfs_t *fat, node_entry_t *file, int cnt, int ptr);
+
+#if defined (FATFS_CACHEALL) 
 node_entry_t *fat_search_by_path(node_entry_t *dir, const char *fn);
+void delete_directory_tree(node_entry_t * node);
 void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc);
-
-
 node_entry_t *get_child_of_parent(node_entry_t *children, unsigned char *child_name);
-cluster_node_t * build_cluster_linklist(fatfs_t *fat, int start_cluster);
+node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned char attr);
+#else
+node_entry_t *fat_search_by_path(fatfs_t *fat, const char *fn);
+node_entry_t *search_directory(fatfs_t *fat, node_entry_t *node, const char *fn);
+node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int ptr, const char *fn);
+node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last_entry);
+node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr);
+#endif
 
 __END_DECLS
 #endif /* _FAT_DIR_ENTRY_H_ */

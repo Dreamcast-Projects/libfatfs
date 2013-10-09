@@ -25,7 +25,7 @@ int fat_read_bootsector (fat_BS_t *bs, kos_blockdev_t *bd)
 
 }
 
-#ifdef FAT2FS_DEBUG
+#ifdef FATFS_DEBUG
 void fat_print_bootsector(const fat_BS_t* fat) {
 	fat_extBS_32_t ext;
 
