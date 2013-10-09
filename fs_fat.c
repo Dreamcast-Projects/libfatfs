@@ -496,7 +496,7 @@ static dirent_t *fs_fat_readdir(void *h) {
     memcpy(fh[fd].dirent.name, fh[fd].dir->Name, strlen(fh[fd].dir->Name));
     fh[fd].dirent.name[strlen(fh[fd].dir->Name)] = '\0';
     fh[fd].dirent.attr = fh[fd].dir->Attr;
-    fh[fd].dirent.time = 0; /*inode->i_mtime;
+    fh[fd].dirent.time = 0; /*inode->i_mtime; 
     fh[fd].ptr += dent->rec_len;*/
 
     mutex_unlock(&fat_mutex);
@@ -576,8 +576,6 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 
 static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
 {
-    int loc[2];
-    fat_dir_entry_t entry;
     char *ufn = NULL;
     fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
     node_entry_t *found = NULL;
@@ -627,32 +625,6 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
 		free(ufn);
 		return -1;
 	}
-
-    /* Add '.' folder entry */ 
-    strncpy(entry.FileName, ".       ", 8);
-    entry.FileName[8] = '\0';
-    strncpy(entry.Ext, "   ", 3 ); 
-    entry.Ext[3] = '\0';
-    entry.Attr = DIRECTORY;
-    entry.FileSize = 0;   
-    entry.FstClusLO = found->Data_Clusters->Cluster_Num;
-    loc[0] = mnt->fs->data_sec_loc + (entry.FstClusLO - 2) * mnt->fs->boot_sector.sectors_per_cluster;
-    loc[1] = 0;
-    write_entry(mnt->fs, &entry, DIRECTORY, loc);
-
-    /* Add '..' folder entry */
-    strncpy(entry.FileName, "..      ", 8);
-    entry.FileName[8] = '\0';
-    strncpy(entry.Ext, "   ", 3 ); 
-    entry.Ext[3] = '\0';
-    entry.Attr = DIRECTORY;
-    entry.FileSize = 0;   
-    if(found->Parent->Parent == NULL) /* If parent of this folder is the root directory, set first cluster number to 0 */
-        entry.FstClusLO = 0;
-    else 
-        entry.FstClusLO = found->Parent->Data_Clusters->Cluster_Num; 
-    loc[1] = 32; /* loc[0] Doesnt change */
-    write_entry(mnt->fs, &entry, DIRECTORY, loc);
 
 #if defined(FATFS_CACHEALL) 
     if(found->Parent->Parent != NULL) /* Update parent directories(access[change] time/date) */

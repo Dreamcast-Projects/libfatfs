@@ -759,6 +759,9 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
     node_entry_t *child;
     node_entry_t *temp;
     node_entry_t *newfile;
+	
+	int loc[2];
+	fat_dir_entry_t entry;
 
     memset(ufn, 0, strlen(fn)+1);
 
@@ -861,7 +864,39 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
                     }
                     
                     temp->Next = newfile;
-                }      
+                }    
+
+				/* If its a folder, add the hidden files "." and ".." */
+				if(attr & DIRECTORY)
+				{
+					/* Add '.' folder entry */ 
+					strncpy(entry.FileName, ".       ", 8);
+					entry.FileName[8] = '\0';
+					strncpy(entry.Ext, "   ", 3 ); 
+					entry.Ext[3] = '\0';
+					entry.Attr = DIRECTORY;
+					entry.FileSize = 0;   
+					entry.FstClusLO = newfile->Data_Clusters->Cluster_Num;
+					
+					loc[0] = fat->data_sec_loc + (entry.FstClusLO - 2) * fat->boot_sector.sectors_per_cluster;
+					loc[1] = 0;
+					write_entry(fat, &entry, DIRECTORY, loc);
+
+					/* Add '..' folder entry */
+					strncpy(entry.FileName, "..      ", 8);
+					entry.FileName[8] = '\0';
+					strncpy(entry.Ext, "   ", 3 ); 
+					entry.Ext[3] = '\0';
+					entry.Attr = DIRECTORY;
+					entry.FileSize = 0;   
+					if(newfile->Parent->Parent == NULL) /* If parent of this folder is the root directory, set first cluster number to 0 */
+						entry.FstClusLO = 0;
+					else 
+						entry.FstClusLO = newfile->Parent->Data_Clusters->Cluster_Num; 
+						
+					loc[1] = 32; /* loc[0] Doesnt change */
+					write_entry(fat, &entry, DIRECTORY, loc);
+				}
                 
                 return newfile;
             }
@@ -1099,6 +1134,8 @@ node_entry_t *fat_search_by_path(fatfs_t *fat, const char *fn)
 
 node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
 {
+	int loc[2];
+
     char *pch;
     char *filename;
     char *entry_filename;
@@ -1108,6 +1145,8 @@ node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
 	node_entry_t *temp = NULL;
 	node_entry_t *rv = NULL;
 	cluster_node_t *cluster = NULL;
+	
+	fat_dir_entry_t entry;
 	
 	if(fat->fat_type == FAT32)
 	{
@@ -1204,6 +1243,38 @@ node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
                     
                     return NULL;  
                 }
+				
+				/* If its a folder, add the hidden files "." and ".." */
+				if(attr & DIRECTORY)
+				{
+					/* Add '.' folder entry */ 
+					strncpy(entry.FileName, ".       ", 8);
+					entry.FileName[8] = '\0';
+					strncpy(entry.Ext, "   ", 3 ); 
+					entry.Ext[3] = '\0';
+					entry.Attr = DIRECTORY;
+					entry.FileSize = 0;   
+					entry.FstClusLO = newfile->Data_Clusters->Cluster_Num;
+					
+					loc[0] = fat->data_sec_loc + (entry.FstClusLO - 2) * fat->boot_sector.sectors_per_cluster;
+					loc[1] = 0;
+					write_entry(fat, &entry, DIRECTORY, loc);
+
+					/* Add '..' folder entry */
+					strncpy(entry.FileName, "..      ", 8);
+					entry.FileName[8] = '\0';
+					strncpy(entry.Ext, "   ", 3 ); 
+					entry.Ext[3] = '\0';
+					entry.Attr = DIRECTORY;
+					entry.FileSize = 0;   
+					if(strcasecmp(newfile->Parent->Name, fat->mount) == 0) /* If parent of this folder is the root directory, set first cluster number to 0 */
+						entry.FstClusLO = 0;
+					else 
+						entry.FstClusLO = newfile->Parent->Data_Clusters->Cluster_Num; 
+						
+					loc[1] = 32; /* loc[0] Doesnt change */
+					write_entry(fat, &entry, DIRECTORY, loc);
+				}
 				
 				free(ufn);
 				delete_tree_entry(temp);
