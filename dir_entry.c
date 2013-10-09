@@ -1513,6 +1513,9 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 		ptr = last_entry->Location[1];
 		sector_loc = last_entry->Location[0];
 		
+		/* Free up the last directory since we dont need it anymore */
+		delete_tree_entry(last_entry);
+		
 		if(clust != NULL)
 		{	
 			/* Determine cluster(based on sector) */
