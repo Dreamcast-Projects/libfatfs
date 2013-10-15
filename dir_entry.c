@@ -13,7 +13,7 @@
 unsigned char * extract_long_name(fat_lfn_entry_t *lfn) 
 {
 	int i;
-	char c;
+
 	unsigned char temp[2];
 	unsigned char *buf = malloc(sizeof(unsigned char)*13);
 	unsigned char *final = NULL;
@@ -44,16 +44,6 @@ unsigned char * extract_long_name(fat_lfn_entry_t *lfn)
 	
 	/* Remove filler chars at end of the long file name */
 	final = remove_all_chars(buf, 0xFF);
-	
-	i = 0;
-	
-	/* Convert long name into uppercase */
-	while (final[i])
-    {
-       c = final[i];
-       final[i] = toupper((int)c);
-       i++;
-    }
 	
 	free(buf);
 	
@@ -105,10 +95,10 @@ node_entry_t * get_child_of_parent(node_entry_t *parent, unsigned char *child_na
 	
 	while(child != NULL) 
 	{	
-	    if(strcmp(child->Name, child_name) == 0) {
+	    if(strcasecmp(child->Name, child_name) == 0) {
 		    return child;
 		}
-		else if(strcmp(child->ShortName, child_name) == 0)
+		else if(strcasecmp(child->ShortName, child_name) == 0)
 		{
 			return child;
 		}
@@ -129,17 +119,13 @@ node_entry_t *fat_search_by_path(node_entry_t *root, const char *fn)
 
     memset(ufn, 0, strlen(fn)+1);
 
-    /* Make sure the files/folders are captialized */
-    while (fn[i])
-    {
-       c = fn[i];
-       ufn[i] = toupper((int)c);
-       i++;
-    }
+    /* Make a copy */
+	strcpy(ufn, fn);
+	ufn[strlen(fn)] = '\0';
 
     pch = strtok(ufn,"/");
 	
-    if(strcmp(pch, target->Name) == 0) {
+    if(strcasecmp(pch, target->Name) == 0) {
 		pch = strtok (NULL, "/");
 
 		if(pch != NULL) {
@@ -252,6 +238,7 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 			memcpy(temp.FileName, (buf+var+FILENAME), 8); 
 			memcpy(temp.Ext, (buf+var+EXTENSION), 3);
 			memcpy(&(temp.Attr), (buf+var+ATTRIBUTE), 1);
+			memcpy(&(temp.Res), (buf+var+RESERVED), 1);
 			memcpy(&(temp.FstClusLO), (buf+var+STARTCLUSTER), 2);
 			memcpy(&(temp.FileSize), (buf+var+FILESIZE), 4);
 			
@@ -273,13 +260,39 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 			if(lfnbuf1[0] == '\0' && lfnbuf2[0] == '\0')
 			{
                 strcat(lfnbuf1, temp.FileName);
+				strcat(lfnbuf2, temp.FileName);
+				
+				if(temp.Res & 0x08) /* If the filename is supposed to appear lowercase...make it so */
+				{	
+					j = 0;
+					
+					while(lfnbuf2[j])
+					{
+						lfnbuf2[j] = tolower((int)lfnbuf2[j]);
+						j++;
+					}
+				}
+				
 				if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
 					if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
 						strcat(lfnbuf1, temp.Ext);
 					}
 					else {
 						strcat(lfnbuf1, ".");
+						strcat(lfnbuf2, ".");
+						
 						strcat(lfnbuf1, temp.Ext);
+						strcat(lfnbuf2, temp.Ext);
+						
+						if(temp.Res & 0x10) /* If the extension is supposed to appear lowercase...make it so */
+						{
+							j = strlen(temp.FileName) + 1; /* + 1 because of period */
+							while(lfnbuf2[j])
+							{
+								lfnbuf2[j] = tolower((int)lfnbuf2[j]);
+								j++;
+							}
+						}
 					}
 				}
 				
@@ -287,11 +300,16 @@ void parse_directory_sector(fatfs_t *fat, node_entry_t *parent, int sector_loc)
 				strcpy(lfnbuf1, str_temp);
 				free(str_temp);
 				
-				new_entry->Name = malloc(strlen(lfnbuf1));
+				str_temp = remove_all_chars(lfnbuf2,' '); 
+				strcpy(lfnbuf2, str_temp);
+				free(str_temp);
+				
+				new_entry->Name = malloc(strlen(lfnbuf2));
 				new_entry->ShortName = malloc(strlen(lfnbuf1));
-				strcpy(new_entry->Name, lfnbuf1);
+				strcpy(new_entry->Name, lfnbuf2);
 				strcpy(new_entry->ShortName, lfnbuf1);  
 				memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+				memset(lfnbuf2, 0, sizeof(unsigned char)*256);
 			}
 			else if(lfnbuf1[0] != '\0')
 			{
@@ -610,6 +628,7 @@ void delete_tree_entry(node_entry_t * node)
 	node_entry_t *child;
     cluster_node_t  *old;
     
+#if defined(FATFS_CACHEALL)
 	if(node->Parent != NULL)
 	{
 		if(node->Parent->Children == node) /* If we are the first child in the list */
@@ -628,17 +647,20 @@ void delete_tree_entry(node_entry_t * node)
 			child->Next = node->Next;
 		}
 	}
+#endif
 	
     free(node->Name);      /* Free the name */
 	free(node->ShortName); /* Free the shortname */
     
     /* Free the LL Data Clusters */
-    while(node->Data_Clusters)
+    while(node->Data_Clusters != NULL)
     {
         old = node->Data_Clusters;
         node->Data_Clusters = node->Data_Clusters->Next;
         free(old);
     }
+	
+	free(node);
     
     node = NULL;
 }
@@ -673,7 +695,6 @@ void delete_directory_tree(node_entry_t * node)
 cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
 {
     unsigned int fat_index = 2;
-	short byte_offset = (fat->fat_type == FAT16) ? 2 : 4;
 	unsigned int marker = (fat->fat_type == FAT16) ? 0xFFFF : 0x0FFFFFFF;
     unsigned int cluster_num = 0;
     cluster_node_t *clust = cluster;
@@ -690,7 +711,7 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
     /* We are now at the end of the LL. Search for a free cluster. */
     while(fat_index < fat->boot_sector.bytes_per_sector*fat->table_size) { /* Go through Table one index at a time */
 	
-		cluster_num = read_fat_table_value(fat, fat_index*byte_offset);
+		cluster_num = read_fat_table_value(fat, fat_index*fat->byte_offset);
         
         /* If we found a free entry */
         if(cluster_num == 0x00) 
@@ -701,9 +722,9 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
             cluster_num = marker;
             if(cluster != NULL) /* Cant change what doesnt exist */
             {
-				write_fat_table_value(fat, clust->Cluster_Num*byte_offset, fat_index);  /* Change the table to indicate an allocated cluster */
+				write_fat_table_value(fat, clust->Cluster_Num*fat->byte_offset, fat_index);  /* Change the table to indicate an allocated cluster */
 			}
-			write_fat_table_value(fat, fat_index*byte_offset, cluster_num);             /* Put the marker(0xFFFF or 0x0FFFFFFF) at the allocated cluster index */
+			write_fat_table_value(fat, fat_index*fat->byte_offset, cluster_num);             /* Put the marker(0xFFFF or 0x0FFFFFFF) at the allocated cluster index */
             
             new_clust = (cluster_node_t *)malloc(sizeof(cluster_node_t));
             new_clust->Cluster_Num = fat_index;
@@ -726,14 +747,13 @@ cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster)
 
 void delete_cluster_list(fatfs_t *fat, node_entry_t *f)
 {
-	short byte_offset = (fat->fat_type == FAT16) ? 2 : 4;
 	const short int clear = 0;
 	cluster_node_t *clust = f->Data_Clusters;
 	cluster_node_t *temp = clust;
 	
 	while(clust != NULL)
 	{
-		write_fat_table_value(fat, clust->Cluster_Num*byte_offset, clear);
+		write_fat_table_value(fat, clust->Cluster_Num*fat->byte_offset, clear);
 #ifdef FATFS_DEBUG
 		printf("delete_cluster_list(dir_entry.c) Freed Cluster: %d\n", clust->Cluster_Num);
 #endif
@@ -766,16 +786,12 @@ node_entry_t *create_entry(fatfs_t *fat, node_entry_t * root, char *fn, unsigned
     memset(ufn, 0, strlen(fn)+1);
 
     /* Make sure the files/folders are capitalized */
-    while (fn[i])
-    {
-       c = fn[i];
-       ufn[i] = toupper((int)c);
-       i++;
-    }
+    strcpy(ufn, fn);
+	ufn[strlen(fn)] = '\0';
 
     pch = strtok(ufn,"/");  /* Grab Root */
 	
-    if(strcmp(pch, target->Name) == 0) {
+    if(strcasecmp(pch, target->Name) == 0) {
         pch = strtok (NULL, "/"); 
 
         if(pch != NULL) {
@@ -1085,12 +1101,7 @@ node_entry_t *fat_search_by_path(fatfs_t *fat, const char *fn)
 	}
 	
 	/* Make sure the files/folders are captialized */
-    while (fn[i])
-    {
-       c = fn[i];
-       ufn[i] = toupper((int)c);
-       i++;
-    }
+    strcpy(ufn, fn);
 	ufn[strlen(fn)] = '\0';
 	
 	/* Build Root */
@@ -1107,7 +1118,7 @@ node_entry_t *fat_search_by_path(fatfs_t *fat, const char *fn)
 	
 	pch = strtok(ufn,"/");  /* Grab Root */
 	
-    if(strcmp(pch, temp->Name) == 0) {
+    if(strcasecmp(pch, temp->Name) == 0) {
         pch = strtok (NULL, "/"); 
 
         while(pch != NULL) {
@@ -1172,7 +1183,7 @@ node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
 	
 	pch = strtok(ufn,"/");  /* Grab Root */
 	
-    if(strcmp(pch, temp->Name) == 0) {
+    if(strcasecmp(pch, temp->Name) == 0) {
         pch = strtok (NULL, "/"); 
 
         while(pch != NULL) {
@@ -1302,7 +1313,7 @@ node_entry_t *search_directory(fatfs_t *fat, node_entry_t *node, const char *fn)
 	node_entry_t    *rv = NULL;
 
 	/* If the directory is the root directory and if fat->fat_type = FAT16 consider it a special case */
-	if(strcmp(node->Name, fat->mount) == 0 && fat->fat_type == FAT16) /* Go through special(static number) sectors. No clusters. */
+	if(strcasecmp(node->Name, fat->mount) == 0 && fat->fat_type == FAT16) /* Go through special(static number) sectors. No clusters. */
 	{
 		for(i = 0; i < fat->root_dir_sectors_num; i++) {
 		
@@ -1418,6 +1429,7 @@ node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int 
 			memcpy(temp.FileName, (buf+var+FILENAME), 8); 
 			memcpy(temp.Ext, (buf+var+EXTENSION), 3);
 			memcpy(&(temp.Attr), (buf+var+ATTRIBUTE), 1);
+			memcpy(&(temp.Res), (buf+var+RESERVED), 1);
 			memcpy(&(temp.FstClusLO), (buf+var+STARTCLUSTER), 2);
 			memcpy(&(temp.FileSize), (buf+var+FILESIZE), 4);
 			
@@ -1437,6 +1449,19 @@ node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int 
 			if(lfnbuf1[0] == '\0' && lfnbuf2[0] == '\0')
 			{
 				strcat(lfnbuf1, temp.FileName);
+				strcat(lfnbuf2, temp.FileName);
+				
+				if(temp.Res & 0x08) /* If the filename is supposed to appear lowercase...make it so */
+				{	
+					j = 0;
+					
+					while(lfnbuf2[j])
+					{
+						lfnbuf2[j] = tolower((int)lfnbuf2[j]);
+						j++;
+					}
+				}
+				
 				if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
 					if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
 						strcat(lfnbuf1, temp.Ext);
@@ -1444,6 +1469,20 @@ node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int 
 					else {
 						strcat(lfnbuf1, ".");
 						strcat(lfnbuf1, temp.Ext);
+						
+						strcat(lfnbuf2, ".");
+						strcat(lfnbuf2, temp.Ext);
+						
+						if(temp.Res & 0x10) /* If the extension is supposed to appear lowercase...make it so */
+						{	
+							j = strlen(temp.FileName) + 1; /* + 1 for period */
+							
+							while(lfnbuf2[j])
+							{
+								lfnbuf2[j] = tolower((int)lfnbuf2[j]);
+								j++;
+							}
+						}
 					}
 				}
 				
@@ -1451,14 +1490,19 @@ node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int 
 				strcpy(lfnbuf1, str_temp);
 				free(str_temp);
 				
+				str_temp = remove_all_chars(lfnbuf2,' '); 
+				strcpy(lfnbuf2, str_temp);
+				free(str_temp);
+				
 				if(fn == NULL || strcasecmp(lfnbuf1, fn) == 0) /* We found the file we are looking for */
 				{
 					new_entry = malloc(sizeof(node_entry_t));
-					new_entry->Name = malloc(strlen(lfnbuf1));
+					new_entry->Name = malloc(strlen(lfnbuf2));
 					new_entry->ShortName = malloc(strlen(lfnbuf1));
-					strcpy(new_entry->Name, lfnbuf1);
+					strcpy(new_entry->Name, lfnbuf2);
 					strcpy(new_entry->ShortName, lfnbuf1);  
 					memset(lfnbuf1, 0, sizeof(unsigned char)*256);
+					memset(lfnbuf2, 0, sizeof(unsigned char)*256);
 				}
 				else
 				{
@@ -1627,7 +1671,7 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 				}
 			}
 		}
-		else if(strcmp(dir->Name, fat->mount) == 0 && fat->fat_type == FAT16) /* Fat16 Root Directory */
+		else if(strcasecmp(dir->Name, fat->mount) == 0 && fat->fat_type == FAT16) /* Fat16 Root Directory */
 		{
 			if(sector_loc >= (fat->root_dir_sec_loc + fat->root_dir_sectors_num))
 				return NULL;
@@ -1635,7 +1679,7 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 	}
 	
 	/* If the directory is the root directory and if fat->fat_type = FAT16 consider it a special case */
-	if(strcmp(dir->Name, fat->mount) == 0 && clust == NULL && fat->fat_type == FAT16) /* Go through special(static number) sectors. No clusters. */
+	if(strcasecmp(dir->Name, fat->mount) == 0 && clust == NULL && fat->fat_type == FAT16) /* Go through special(static number) sectors. No clusters. */
 	{
 		for(i = (sector_loc - fat->root_dir_sec_loc); i < fat->root_dir_sectors_num; i++) 
 		{

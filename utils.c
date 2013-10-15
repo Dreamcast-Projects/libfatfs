@@ -407,7 +407,6 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 				else
 				{
 					*res = 0x00;
-					printf("Number of lower case letters in FN doesnt equal to the amount of letters\n");
 					*lfn = 1;  /* Create a lfn because not the whole filename is lower case which can be an exception. I.E. we have something like this: "Delete.txt"
 								  instead of "delete.txt" */
 				}
@@ -424,7 +423,6 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 					else
 					{
 						*res = 0x00;
-						printf("Number of lower case letters in EXT doesnt equal to the amount of letters\n");
 						*lfn = 1;  /* Create a lfn because not the whole extenstion is lower case which can be an exception. I.E. we have something like this: "delete.Txt"
 									  instead of "delete.txt" */
 					}

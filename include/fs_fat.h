@@ -3,8 +3,10 @@
 #ifndef _FS_FAT_H_
 #define _FS_FAT_H_
 
+#include <sys/cdefs.h>
 __BEGIN_DECLS
 
+#include <stdint.h>
 #include <kos/blockdev.h>
 
 int fs_fat_init(void);

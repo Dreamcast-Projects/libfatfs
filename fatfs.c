@@ -73,9 +73,7 @@ void write_fat_table_value(fatfs_t *fat, int byte_index, int value)
 
 fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
     unsigned int i;
-	
-	char c;
-	char *fmp = NULL; 
+
     fatfs_t *rv;
 	
 	/* For Fat32 */
@@ -83,19 +81,6 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	fat_extBS_32_t  fat32_boot_ext;
 	cluster_node_t  *cluster = NULL;
 	cluster_node_t  *node = NULL;
-	
-	fmp = malloc(strlen(mp)+1);
-	memset(fmp, 0, strlen(mp)+1);
-	
-	i = 0;
-
-	/* Make sure the files/folders are capitalized */
-	while (mp[i])
-	{
-		c = mp[i];
-		fmp[i] = toupper((int)c);
-		i++;
-	}
 
     if(bd->init(bd))
 		return NULL;
@@ -162,9 +147,9 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	printf("Total number of clusters: %d\n\n\n", rv->total_clusters_num);
 #endif
 	
-	rv->mount = malloc(strlen(fmp)+ 1);
-	strncpy(rv->mount, fmp, strlen(fmp));
-	rv->mount[strlen(fmp)] = '\0';
+	rv->mount = malloc(strlen(mp)+ 1);
+	strcpy(rv->mount, mp);
+	rv->mount[strlen(mp)] = '\0';
 	
 #if defined (FATFS_CACHEALL) 
 	
@@ -175,8 +160,8 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	}
 	
 	rv->root = malloc(sizeof(node_entry_t));
-	rv->root->Name = (unsigned char *)remove_all_chars(fmp, '/');          /*  */
-	rv->root->ShortName = (unsigned char *)remove_all_chars(fmp, '/');
+	rv->root->Name = (unsigned char *)remove_all_chars(mp, '/');          /*  */
+	rv->root->ShortName = (unsigned char *)remove_all_chars(mp, '/');
 	rv->root->Attr = DIRECTORY;           /* Root directory is obviously a directory */
 	rv->root->Data_Clusters = cluster;    /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
 	rv->root->Parent = NULL;              /* Should always be NULL for root*/
@@ -202,9 +187,6 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 			node = node->Next;
 		} while(node != NULL);
 	}
-	
-	free(fmp);
-	
 #endif
 	
 	return rv;

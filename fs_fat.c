@@ -173,12 +173,10 @@ static int fs_fat_close(void * h) {
 	
 #if !defined(FATFS_CACHEALL) /* Running default. Need to delete(free) node since its not part of a directory tree */
 	delete_tree_entry(fh[fd].node);
-	fh[fd].node = NULL;
 	
 	if(fh[fd].dir != NULL)
 	{
 		delete_tree_entry(fh[fd].dir);
-		fh[fd].dir = NULL;
 	}
 #endif
 
@@ -190,7 +188,7 @@ static int fs_fat_close(void * h) {
 static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
     file_t fd = ((file_t)h) - 1;
     fatfs_t *fs;
-    unsigned char *block;
+    unsigned char *block = NULL;
     unsigned char *bbuf = (unsigned char *)buf;
     ssize_t rv;
 
@@ -226,20 +224,37 @@ static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
     fs = fh[fd].mnt->fs;
     rv = (ssize_t)cnt;
 	
+	/*
+	printf("Number of bytes to read: %d\n", cnt);
+	printf("Filesize: %d\n", fh[fd].node->FileSize);
+	printf("Gonna read %d bytes starting at ptr %d\n", (int)rv, (int)fh[fd].ptr);
+	*/
     if(!(block = fat_read_data(fs, fh[fd].node, (int)cnt, fh[fd].ptr))) { 
+		if(block != NULL)
+			free(block);
         mutex_unlock(&fat_mutex);
         errno = EBADF;
         return -1;
     }
+	/*
+	printf("After reading data\n");
+	*/
 
     memcpy(bbuf, block, cnt);
     bbuf[cnt] = '\0';
     fh[fd].ptr += cnt;
-
+	/*
+	printf("After copying data and incrementing pointer\n");
+*/
     /* We're done, clean up and return. */
     mutex_unlock(&fat_mutex);
-    
+    /*
+	printf("Before freeing block\n");
+*/
     free(block);
+/*
+	printf("After freeing block\n");
+*/
 
     return rv;
 }
@@ -301,87 +316,12 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
     return rv;
 }
 
-static _off_t fs_fat_seek(void *h, _off_t offset, int whence) {
-    file_t fd = ((file_t)h) - 1;
-    _off_t rv;
-
-    mutex_lock(&fat_mutex);
-
-    /* Check that the fd is valid */
-    if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
-        mutex_unlock(&fat_mutex);
-        errno = EBADF;
-        return -1;
-    }
-
-    /* Update current position according to arguments */
-    switch(whence) {
-        case SEEK_SET:
-            fh[fd].ptr = offset;
-            break;
-
-        case SEEK_CUR:
-            fh[fd].ptr += offset;
-            break;
-
-        case SEEK_END:
-            fh[fd].ptr = fh[fd].node->FileSize + offset;
-            break;
-
-        default:
-            mutex_unlock(&fat_mutex);
-	    errno = EINVAL;
-            return -1;
-    }
-
-    rv =  (_off_t)fh[fd].ptr;
-    mutex_unlock(&fat_mutex);
-	
-    return rv;
-}
-
-static _off_t fs_fat_tell(void *h) {
-    file_t fd = ((file_t)h) - 1;
-    _off_t rv;
-    
-    mutex_lock(&fat_mutex);
-
-    if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
-        mutex_unlock(&fat_mutex);
-        errno = EINVAL;
-        return -1;
-    }
-
-    rv = (off_t)fh[fd].ptr;
-
-    mutex_unlock(&fat_mutex);
-	
-    return rv;
-}
-
-static size_t fs_fat_total(void *h) {
-    file_t fd = ((file_t)h) - 1;
-    size_t rv;
-    
-    mutex_lock(&fat_mutex);
-
-    if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
-        mutex_unlock(&fat_mutex);
-        errno = EINVAL;
-        return -1;
-    }
-
-    rv = fh[fd].node->FileSize;
-    mutex_unlock(&fat_mutex);
-	
-    return rv;
-}
-
-
 static _off64_t fs_fat_seek64(void *h, _off64_t offset, int whence) {
     file_t fd = ((file_t)h) - 1;
     _off64_t rv;
-
+	/*
+	printf("Seek function is called\n");
+*/
     mutex_lock(&fat_mutex);
 
     /* Check that the fd is valid */
@@ -420,7 +360,9 @@ static _off64_t fs_fat_seek64(void *h, _off64_t offset, int whence) {
 static _off64_t fs_fat_tell64(void *h) {
     file_t fd = ((file_t)h) - 1;
     _off64_t rv;
-    
+	/*
+	printf("Tell function is called\n");
+    */
     mutex_lock(&fat_mutex);
 
     if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
@@ -429,7 +371,7 @@ static _off64_t fs_fat_tell64(void *h) {
         return -1;
     }
 
-    rv = (off_t)fh[fd].ptr;
+    rv = (_off64_t)fh[fd].ptr;
 
     mutex_unlock(&fat_mutex);
 	
@@ -439,7 +381,9 @@ static _off64_t fs_fat_tell64(void *h) {
 static uint64 fs_fat_total64(void *h) {
     file_t fd = ((file_t)h) - 1;
     size_t rv;
-    
+    /*
+	printf("Total function is called\n");
+	*/
     mutex_lock(&fat_mutex);
 
     if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
@@ -774,9 +718,9 @@ static vfs_handler_t vh = {
     fs_fat_close,              /* close */
     fs_fat_read,               /* read */
     fs_fat_write,              /* write */
-    fs_fat_seek,               /* seek */
-    fs_fat_tell,               /* tell */
-    fs_fat_total,              /* total */
+    NULL,             		   /* seek */
+    NULL,              		   /* tell */
+    NULL,            		   /* total */
     fs_fat_readdir,            /* readdir */
     NULL,                      /* ioctl */
     NULL,                      /* rename */
@@ -867,7 +811,7 @@ int fs_fat_unmount(const char *mp) {
     mutex_lock(&fat_mutex);
 
     LIST_FOREACH(i, &fat_fses, entry) {
-        if(!strcmp(mp, i->vfsh->nmmgr.pathname)) {
+        if(!strcasecmp(mp, i->vfsh->nmmgr.pathname)) {
             found = 1;
             break;
         }
