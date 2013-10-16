@@ -24,8 +24,7 @@ int num_alpha(char *str)
 		c++;
     }
 
-	return count;
-	
+	return count;	
 }
 
 /* 'str' is the string you want to remove characters 'c' from */
@@ -44,10 +43,9 @@ char *remove_all_chars(const unsigned char* str, unsigned char c) {
 }
 
 /* 'replace_chars' contains characters that you want to replace with character 'replace_with' in string str */
-void replace_all_chars(char **str, const char* replace_chars, unsigned char replace_with) {
-	char *c;
-	
-	c = (char *)*str;
+void replace_all_chars(char **str, const char* replace_chars, unsigned char replace_with) 
+{
+	char *c = (char *)*str;
    
 	while (*c)
 	{
@@ -60,7 +58,7 @@ void replace_all_chars(char **str, const char* replace_chars, unsigned char repl
 	}
 }
 
-/* Returns 1 if a lowercase character is found in 'str', returns 0 otherwise */
+/* Returns the number of lowercase characters found in 'str' */
 int contains_lowercase(const char *str)
 {
 	int count = 0;
@@ -76,27 +74,6 @@ int contains_lowercase(const char *str)
     }
 
 	return count;
-}
-
-/* http://stackoverflow.com/questions/122616/how-do-i-trim-leading-trailing-whitespace-in-a-standard-way */
-char *trimwhitespace(char *str)
-{
-  char *end;
-
-  /* Trim leading space */
-  while(isspace((int)*str)) str++;
-
-  if(*str == 0)  /* All spaces? */
-    return str;
-
-  /* Trim trailing space */
-  end = str + strlen(str) - 1;
-  while(end > str && isspace((int)*end)) end--;
-
-  /* Write new null terminator */
-  *(end+1) = 0;
-
-  return str;
 }
 
 /* http://stackoverflow.com/questions/1071542/in-c-check-if-a-char-exists-in-a-char-array */
@@ -194,12 +171,7 @@ char *generate_short_filename(fatfs_t *fat, node_entry_t *curdir, char * fn, uns
 		
 		temp2 = strtok(NULL, ".");
 	}
-	
-	/* Pad with spaces if need be */
-	/*
-	while(strlen(filename) < 8) 
-		strcat(filename, " ");
-	*/	
+
 	while(strlen(ext) < 3)
 		strcat(ext, " ");
 	
@@ -337,14 +309,7 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 		for(i = 0; i < strlen(fn_temp); i++)
 			fn_temp[i] = toupper((int)fn_temp[i]);
 	}
-
-
-#if defined (FATFS_CACHEALL) 
-	/* Should not have the same name of any other file/folder in this current directory */
-	while(get_child_of_parent(curdir, fn_temp) != NULL) 
-#else
 	while(search_directory(fat, curdir, fn_temp) != NULL)
-#endif
 	{
 		if(diff > 99999)
 		{
@@ -531,7 +496,7 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 {
 	fat_lfn_entry_t *lfn_entry;
 	fat_dir_entry_t *f_entry;
-	unsigned char sector[512]; /* Each sector is 512 bytes long */
+	unsigned char *sector = malloc(512*sizeof(unsigned char)); /* Each sector is 512 bytes long */
 	time_t rawtime;
 	short int tme = 0;
 	short int date = 0;
@@ -588,6 +553,8 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	/* Write it back */
 	fat->dev->write_blocks(fat->dev, loc[0], 1, sector);
 
+	free(sector);
+	
 	return 0;
 }
 
@@ -716,7 +683,9 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	{
 		cur_cluster = curdir->Data_Clusters;
 		
-		//printf("Couldn't find the free entries. Allocating a Cluster...\n");
+#ifdef FATFS_DEBUG
+		printf("Couldn't find the free entries. Allocating a Cluster...\n");
+#endif
 		
 		while(cur_cluster->Next != NULL)
 		{

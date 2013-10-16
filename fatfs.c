@@ -16,15 +16,14 @@
 #include "dir_entry.h"
 #include "boot_sector.h"
 
-static short sector_offset = -1; /* Makes it to where we always have to read a sector (FAT table) first */
+static short sector_offset = -1; /* Makes sure we always have to read a sector (FAT table) first */
 static unsigned char buffer[512];
 
 /* Read the Fat table from the SD card and stores it in table */
 unsigned int read_fat_table_value(fatfs_t *fat, int byte_index) 
 {
-	unsigned int read_value;
-	short byte_offset = (fat->fat_type == FAT16) ? 2 : 4;
 	short ptr_offset;
+	unsigned int read_value;
 	
 	/* Check if we have to read a new sector */
 	if(sector_offset != (byte_index / fat->boot_sector.bytes_per_sector))
@@ -41,14 +40,13 @@ unsigned int read_fat_table_value(fatfs_t *fat, int byte_index)
 	
 	ptr_offset = byte_index % fat->boot_sector.bytes_per_sector;
 	
-	memcpy(&read_value, &buffer[ptr_offset], byte_offset);
+	memcpy(&read_value, &buffer[ptr_offset], fat->byte_offset);
 	
 	return read_value;
 }
 
 void write_fat_table_value(fatfs_t *fat, int byte_index, int value) 
 {
-	short byte_offset = (fat->fat_type == FAT16) ? 2 : 4;
 	short ptr_offset;
 	
 	/* Check if we have to read a new sector */
@@ -66,21 +64,16 @@ void write_fat_table_value(fatfs_t *fat, int byte_index, int value)
 	
 	ptr_offset = byte_index % fat->boot_sector.bytes_per_sector;
 	
-	memcpy(&buffer[ptr_offset], &(value), byte_offset);
+	memcpy(&buffer[ptr_offset], &(value), fat->byte_offset);
     
     fat->dev->write_blocks(fat->dev, fat->file_alloc_tab_sec_loc + sector_offset, 1, buffer);
 }
 
 fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
-    unsigned int i;
-
     fatfs_t *rv;
 	
 	/* For Fat32 */
-	int new_sector_loc = 0;
 	fat_extBS_32_t  fat32_boot_ext;
-	cluster_node_t  *cluster = NULL;
-	cluster_node_t  *node = NULL;
 
     if(bd->init(bd))
 		return NULL;
@@ -103,7 +96,7 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	fat_print_bootsector(&(rv->boot_sector));
 #endif
 
-	if(rv->boot_sector.table_size_16 > 0)
+	if(rv->boot_sector.table_size_16 > 0) /* Fat16 */
 	{
 		rv->fat_type = FAT16;
 		rv->byte_offset = 2;
@@ -114,7 +107,7 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 		rv->file_alloc_tab_sec_loc = rv->boot_sector.reserved_sector_count;
 		rv->data_sec_loc = rv->root_dir_sec_loc + rv->root_dir_sectors_num;
 	}
-	else
+	else                                 /* Fat32 */
 	{
 		memset(&fat32_boot_ext, 0, sizeof(fat_extBS_32_t));
 		memcpy(&fat32_boot_ext, &(rv->boot_sector.extended_section), sizeof(fat_extBS_32_t));
@@ -150,44 +143,6 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	rv->mount = malloc(strlen(mp)+ 1);
 	strcpy(rv->mount, mp);
 	rv->mount[strlen(mp)] = '\0';
-	
-#if defined (FATFS_CACHEALL) 
-	
-	if(rv->fat_type == FAT32)
-	{
-		cluster = malloc(sizeof(cluster_node_t));
-		cluster = build_cluster_linklist(rv, fat32_boot_ext.root_cluster);
-	}
-	
-	rv->root = malloc(sizeof(node_entry_t));
-	rv->root->Name = (unsigned char *)remove_all_chars(mp, '/');          /*  */
-	rv->root->ShortName = (unsigned char *)remove_all_chars(mp, '/');
-	rv->root->Attr = DIRECTORY;           /* Root directory is obviously a directory */
-	rv->root->Data_Clusters = cluster;    /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
-	rv->root->Parent = NULL;              /* Should always be NULL for root*/
-	rv->root->Children = NULL;            /* Changes when Directory Tree is built */
-	rv->root->Next = NULL;                /* Should always be NULL. Root is the top most directory and has no equal */
-	
-	/*  Build Directory Tree */
-	if(rv->fat_type == FAT16) /* Fat16 */
-	{
-		for(i = 0; i < rv->root_dir_sectors_num; i++) {
-			parse_directory_sector(rv, rv->root, rv->root_dir_sec_loc + i); 
-		}	
-	}
-	else                      /* Fat32 */
-	{
-		node = rv->root->Data_Clusters;
-				
-		do {	
-			new_sector_loc = rv->data_sec_loc + (node->Cluster_Num - 2) * rv->boot_sector.sectors_per_cluster; /* Calculate sector loc from cluster given */
-			for(i = 0;i < rv->boot_sector.sectors_per_cluster; i++) {
-				parse_directory_sector(rv, rv->root, new_sector_loc + i);
-			}
-			node = node->Next;
-		} while(node != NULL);
-	}
-#endif
 	
 	return rv;
 }

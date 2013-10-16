@@ -12,7 +12,7 @@
 
 char *remove_all_chars(const unsigned char* str, unsigned char c);
 void replace_all_chars(char **str, const char* replace_chars, unsigned char replace_with);
-char *trimwhitespace(char *str);
+
 int correct_filename(const char* str);
 char *generate_short_filename(fatfs_t *fat, node_entry_t *curdir, char * fn, unsigned char attr, int *lfn, unsigned char *res);
 fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum, unsigned char order);

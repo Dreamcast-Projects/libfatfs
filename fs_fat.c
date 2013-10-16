@@ -68,12 +68,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     strcat(ufn, mnt->fs->mount);
     strcat(ufn, fn);
 
-#if defined(FATFS_CACHEALL) 
-    /* Find the object in question */
-    found = fat_search_by_path(mnt->fs->root, ufn);
-#else
 	found = fat_search_by_path(mnt->fs, ufn);
-#endif
 
     /* Handle a few errors */
     if(found == NULL && !(mode & O_CREAT)) {
@@ -87,11 +82,8 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
         return NULL;
     }
     else if(found == NULL && (mode & O_CREAT)) {
-#if defined(FATFS_CACHEALL) 
-        found = create_entry(mnt->fs, mnt->fs->root, ufn, ARCHIVE);
-#else
 		found = create_entry(mnt->fs, ufn, ARCHIVE);
-#endif
+		
         if(found == NULL)
 		{
 			free(ufn);
@@ -126,6 +118,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     if(fd >= MAX_FAT_FILES) {
         errno = ENFILE;
 		free(ufn);
+		delete_tree_entry(found);
         mutex_unlock(&fat_mutex);
         return NULL;
     }
@@ -134,6 +127,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     if((found->Attr & DIRECTORY) && (mode & (O_WRONLY | O_RDWR))) {
         errno = EISDIR;
 		free(ufn);
+		delete_tree_entry(found);
         mutex_unlock(&fat_mutex);
         return NULL;
     }
@@ -142,6 +136,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     if((mode & O_DIR) && !(found->Attr & DIRECTORY)) {
         errno = ENOTDIR;
 		free(ufn);
+		delete_tree_entry(found);
         mutex_unlock(&fat_mutex);
         return NULL;
     }
@@ -170,15 +165,13 @@ static int fs_fat_close(void * h) {
         fh[fd].ptr = 0;
 		fh[fd].mode = 0;
     }
-	
-#if !defined(FATFS_CACHEALL) /* Running default. Need to delete(free) node since its not part of a directory tree */
+
 	delete_tree_entry(fh[fd].node);
 	
 	if(fh[fd].dir != NULL)
 	{
 		delete_tree_entry(fh[fd].dir);
 	}
-#endif
 
     mutex_unlock(&fat_mutex);
 
@@ -188,7 +181,6 @@ static int fs_fat_close(void * h) {
 static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
     file_t fd = ((file_t)h) - 1;
     fatfs_t *fs;
-    unsigned char *block = NULL;
     unsigned char *bbuf = (unsigned char *)buf;
     ssize_t rv;
 
@@ -229,9 +221,7 @@ static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
 	printf("Filesize: %d\n", fh[fd].node->FileSize);
 	printf("Gonna read %d bytes starting at ptr %d\n", (int)rv, (int)fh[fd].ptr);
 	*/
-    if(!(block = fat_read_data(fs, fh[fd].node, (int)cnt, fh[fd].ptr))) { 
-		if(block != NULL)
-			free(block);
+    if((fat_read_data(fs, fh[fd].node, &bbuf, (int)cnt, fh[fd].ptr)) != 0) { 
         mutex_unlock(&fat_mutex);
         errno = EBADF;
         return -1;
@@ -239,22 +229,15 @@ static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
 	/*
 	printf("After reading data\n");
 	*/
-
-    memcpy(bbuf, block, cnt);
     bbuf[cnt] = '\0';
     fh[fd].ptr += cnt;
+	
+	//printf("buf:\n\n%s\n", bbuf);
 	/*
 	printf("After copying data and incrementing pointer\n");
 */
     /* We're done, clean up and return. */
     mutex_unlock(&fat_mutex);
-    /*
-	printf("Before freeing block\n");
-*/
-    free(block);
-/*
-	printf("After freeing block\n");
-*/
 
     return rv;
 }
@@ -263,7 +246,6 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
 {
     file_t fd = ((file_t)h) - 1;
     fatfs_t *fs;
-    unsigned char *bbuf = NULL;
     ssize_t rv;
 
     mutex_lock(&fat_mutex);
@@ -282,23 +264,23 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
         return -1;
     }
     
-    fs = fh[fd].mnt->fs;
-    rv = (ssize_t)cnt;
-
-    /* Copy the bytes we want to write */
-	bbuf = malloc(sizeof(unsigned char)*(cnt+1)); 
-    strncpy(bbuf, buf, cnt);
-    bbuf[cnt] = '\0';
-    
     /* If we set mode to O_APPEND, then make sure we write to end of file */
     if(fh[fd].mode & O_APPEND)
     {
         fh[fd].ptr = fh[fd].node->FileSize;
     }
 	
-    if(!fat_write_data(fs, fh[fd].node, bbuf, cnt, fh[fd].ptr)) {
+	/* If we want to write more than we have, set it to write the whole thing */
+	if(cnt > strlen((unsigned char*)buf))
+	{
+		cnt = strlen((unsigned char*)buf);
+	}
+	
+	fs = fh[fd].mnt->fs;
+    rv = (ssize_t)cnt;
+	
+    if(fat_write_data(fs, fh[fd].node, (unsigned char*)buf, cnt, fh[fd].ptr) != 0) {
         mutex_unlock(&fat_mutex);
-		free(bbuf);
         errno = EBADF;
         return -1;
     }
@@ -310,8 +292,6 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
     update_fat_entry(fs, fh[fd].node);
 
     mutex_unlock(&fat_mutex);
-	
-	free(bbuf);
 
     return rv;
 }
@@ -413,20 +393,12 @@ static dirent_t *fs_fat_readdir(void *h) {
     /* Get the children of this folder if NULL */
     if(fh[fd].dir == NULL) 
     {
-#if defined(FATFS_CACHEALL) 
-        fh[fd].dir = fh[fd].node->Children;
-#else
 		fh[fd].dir = get_next_entry(fh[fd].mnt->fs, fh[fd].node, NULL);
-#endif
     } 
     /* Move on to the next child */
     else  
     {
-#if defined(FATFS_CACHEALL) 
-        fh[fd].dir = fh[fd].dir->Next;
-#else
 		fh[fd].dir = get_next_entry(fh[fd].mnt->fs, fh[fd].node, fh[fd].dir);
-#endif
     }
 	
     /* Make sure we're not at the end of the directory */
@@ -463,12 +435,7 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 
     mutex_lock(&fat_mutex);
 	
-#if defined(FATFS_CACHEALL) 
-    /* Find the file */
-    f = fat_search_by_path(mnt->fs->root, ufn);
-#else
 	f = fat_search_by_path(mnt->fs, ufn);
-#endif
 	
 	free(ufn);
 
@@ -544,12 +511,7 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
         return -1;
     }
 
-#if defined(FATFS_CACHEALL) 
-    /* Make sure the folder doesnt already exist */
-    found = fat_search_by_path(mnt->fs->root, ufn);
-#else
 	found = fat_search_by_path(mnt->fs, ufn);
-#endif
 
     /* Handle a few errors */
     if(found != NULL) {
@@ -558,22 +520,13 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
         return -1;
     }
 
-#if defined(FATFS_CACHEALL) 
-    found = create_entry(mnt->fs, mnt->fs->root, ufn, DIRECTORY);
-#else
 	found = create_entry(mnt->fs, ufn, DIRECTORY);
-#endif
  
     if(found == NULL)
 	{
 		free(ufn);
 		return -1;
 	}
-
-#if defined(FATFS_CACHEALL) 
-    if(found->Parent->Parent != NULL) /* Update parent directories(access[change] time/date) */
-		update_fat_entry(mnt->fs, found->Parent);
-#endif
 		
 	free(ufn);
 
@@ -595,12 +548,7 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 
     mutex_lock(&fat_mutex);
 
-#if defined(FATFS_CACHEALL) 
-    /* Find the folder */
-    f = fat_search_by_path(mnt->fs->root, ufn);
-#else
 	f = fat_search_by_path(mnt->fs, ufn);
-#endif
 	
 	free(ufn);
 
@@ -632,22 +580,12 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 			return -1;
 		}
 		
-		/* Make sure this folder has no contents(children) */
-#if defined(FATFS_CACHEALL) 
-       if(f->Children != NULL) 
-	   {
-			errno = ENOTEMPTY;
-			mutex_unlock(&fat_mutex);
-			return -1;
-	   }
-#else
 	   if(get_next_entry(mnt->fs, f, NULL) != NULL)
 	   {
 			errno = ENOTEMPTY;
 			mutex_unlock(&fat_mutex);
 			return -1;
 	   }
-#endif
 	   
 		/* Remove it from SD card */
 		delete_entry(mnt->fs, f);
@@ -818,11 +756,6 @@ int fs_fat_unmount(const char *mp) {
     }
 
     if(found) {
-	
-#if defined(FATFS_CACHEALL) 
-		/* Free the Directory tree fs->root */
-		delete_directory_tree(i->fs->root);
-#endif
 		
 		free(i->fs->mount); /* Free str mem */
 
