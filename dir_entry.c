@@ -1617,9 +1617,14 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 		{
 			sector_loc = fat->data_sec_loc + ((clust->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster);
 		}
-		else /* Fat16 Root Directory */
+		else if(strcasecmp(dir->Name, fat->mount) == 0 && fat->fat_type == FAT16) /* Fat16 Root Directory */
 		{
 			sector_loc = fat->root_dir_sec_loc;
+		}
+		else
+		{
+			printf("ERROR: The directory \"%s\" has no cluster affiliated with it and is not the root directory of an FAT16 formatted card\n", dir->Name);
+			return NULL;
 		}
 	}
 	/* Start from the last entry */
@@ -1645,6 +1650,12 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 				}
 				
 				clust = clust->Next; /* Otherwise continue to the next cluster */
+			}
+			
+			if(clust == NULL)
+			{
+				printf("Trying to find a cluster that has the sector you need BUT FAILED to find it :(\n");
+				return NULL;
 			}
 		}
 		
@@ -1675,6 +1686,11 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 		{
 			if(sector_loc >= (fat->root_dir_sec_loc + fat->root_dir_sectors_num))
 				return NULL;
+		}
+		else
+		{
+			printf("ERROR: You're trying to advance to a different sector but dont know where to go\n");
+			return NULL;
 		}
 	}
 	
