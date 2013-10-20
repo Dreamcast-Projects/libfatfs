@@ -24,9 +24,10 @@ __BEGIN_DECLS
 #define CREATIONTIME 0x0E
 #define CREATIONDATE 0x10
 #define LASTACCESSDATE 0x12
+#define STARTCLUSTERHI 0x14
 #define LASTWRITETIME 0x16
 #define LASTWRITEDATE 0x18
-#define STARTCLUSTER 0x1A
+#define STARTCLUSTERLOW 0x1A
 #define FILESIZE  0x1C
 
 /* Long file offsets */
@@ -52,13 +53,13 @@ struct fat_long_fn_dir_entry
 	                               The specification says that the last entry value(Order) will be ORed with 0x40(01000000) and it is the mark for last entry
 								   0x80 is marked when LFN entry is deleted
 								*/
-	unsigned short FNPart1[5];  /* The first 5, 2-byte characters of this entry. */
+	unsigned char FNPart1[10];  /* The first 5, 2-byte characters of this entry. */
 	unsigned char Attr;         /* Should only have the value 0x0F (Specifying that it is a long name entry and not an actual file entry) */
 	unsigned char Res;          /* Reserved */
 	unsigned char Checksum;     /* Checksum */
-	unsigned short FNPart2[6];  /* The next 6, 2-byte characters of this entry. */
+	unsigned char FNPart2[12];  /* The next 6, 2-byte characters of this entry. */
 	unsigned short Cluster;     /* Unused. Always 0 */
-	unsigned short FNPart3[2];   /* The final 2, 2-byte characters of this entry. */
+	unsigned char FNPart3[4];   /* The final 2, 2-byte characters of this entry. */
 } __attribute__((packed));
 
 typedef struct fat_dir_entry fat_dir_entry_t;
@@ -126,15 +127,12 @@ struct node_entry {
 	unsigned char Attr;                /* Holds the attributes of entry */
 	unsigned int FileSize;             /* Holds the size of the file */
 	unsigned int Location[2];          /* Location in FAT Table. Location[0]: Sector, Location[1]: Byte in that sector */
-	cluster_node_t    *Data_Clusters;  /* A linked list to all the data clusters this file/folder uses */
- 	node_entry_t *Parent;         /* The folder this file/folder belongs to */
-	node_entry_t *Children;       /* Should only be NULL when this is a file or an empty folder. Only folders are allowed to have children */
-	node_entry_t *Next;           /* The next file/folder in the current directory */
+	cluster_node_t *Data_Clusters;     /* A linked list to all the data clusters this file/folder uses */
 };
 
 /* Prototypes */
 cluster_node_t * build_cluster_linklist(fatfs_t *fat, int start_cluster);
-int generate_and_write_entry(fatfs_t *fat, char *filename, node_entry_t *newfile);
+int generate_and_write_entry(fatfs_t *fat, char *filename, node_entry_t *newfile, node_entry_t *parent);
 void delete_entry(fatfs_t *fat, node_entry_t *file);
 cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster);
 void delete_cluster_list(fatfs_t *fat, node_entry_t *file);

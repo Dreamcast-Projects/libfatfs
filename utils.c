@@ -109,7 +109,7 @@ int correct_filename(const char* str)
    return 0;
 }
 
-char *generate_short_filename(fatfs_t *fat, node_entry_t *curdir, char * fn, unsigned char attr, int *lfn, unsigned char *res)
+char *generate_short_filename(fatfs_t *fat, node_entry_t *curdir, char * fn, int *lfn, unsigned char *res)
 {
 	int diff = 1;
 	
@@ -224,17 +224,6 @@ always added to help reduce the conflicts in the 8.3 name space for automatic ge
 		/* Append the filename */
 		memset(temp1, 0, strlen(fn)+1);
 		strcat(temp1, filename);
-		
-		/*
-		if(attr == DIRECTORY && ext[0] != ' ')
-		{
-			// Append the Value
-			memset(integer_string, 0, 7);
-			sprintf(integer_string, "~%d", diff++); // Increment diff here for maybe future use
-			strcat(temp1, integer_string);
-			
-		}
-		*/
 		
 		while(strlen(temp1) < 8) 
 			strcat(temp1, " ");
@@ -545,7 +534,8 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 		memcpy(sector + loc[1] + LASTWRITETIME, &(tme), 2);
 		memcpy(sector + loc[1] + LASTWRITEDATE, &(date), 2);
 		
-		memcpy(sector + loc[1] + STARTCLUSTER, &(f_entry->FstClusLO), 2);
+		memcpy(sector + loc[1] + STARTCLUSTERHI, &(f_entry->FstClusHI), 2);
+		memcpy(sector + loc[1] + STARTCLUSTERLOW, &(f_entry->FstClusLO), 2);
 		memcpy(sector + loc[1] + FILESIZE, &(f_entry->FileSize), 4);
 		
 	}
@@ -577,7 +567,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 #endif
 	
 	/* Dealing with root directory (FAT16 only) */
-	if(curdir->Parent == NULL && fat->fat_type == FAT16)  /* Fat16 root directory has a constant amount of memory to build entries while fat32's root directory uses clusters(expandable) */
+	if(cur_cluster == NULL && fat->fat_type == FAT16)  /* Fat16 root directory has a constant amount of memory to build entries while fat32's root directory uses clusters(expandable) */
 	{
 		for(i = 0; i < fat->root_dir_sectors_num; i++) {
 			

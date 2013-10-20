@@ -157,7 +157,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
 
 static int fs_fat_close(void * h) {
     file_t fd = ((file_t)h) - 1;
-
+	
     mutex_lock(&fat_mutex);
 
     if(fd < MAX_FAT_FILES && fh[fd].mode) {
@@ -165,13 +165,17 @@ static int fs_fat_close(void * h) {
         fh[fd].ptr = 0;
 		fh[fd].mode = 0;
     }
-
+	
 	delete_tree_entry(fh[fd].node);
+	
+	fh[fd].node = NULL;
 	
 	if(fh[fd].dir != NULL)
 	{
 		delete_tree_entry(fh[fd].dir);
 	}
+	
+	fh[fd].dir = NULL;
 
     mutex_unlock(&fat_mutex);
 
@@ -406,7 +410,9 @@ static dirent_t *fs_fat_readdir(void *h) {
         mutex_unlock(&fat_mutex);
         return NULL;
     }
-
+	
+	//printf("Filename: %s, Attr: %x, Size: %d Loc[0]: %d Loc[1]: %d\n", fh[fd].dir->Name, fh[fd].dir->Attr, fh[fd].dir->FileSize, fh[fd].dir->Location[0], fh[fd].dir->Location[1]);
+	
     /* Fill in the static directory entry */
     fh[fd].dirent.size = fh[fd].dir->FileSize;
     memcpy(fh[fd].dirent.name, fh[fd].dir->Name, strlen(fh[fd].dir->Name));
