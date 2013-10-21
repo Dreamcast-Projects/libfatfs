@@ -26,6 +26,7 @@ short int generate_time(int hour, int minutes, int seconds);
 short int generate_date(int year, int month, int day);
 
 int strcasecmp( const char *s1, const char *s2 );
+unsigned int end_cluster(fatfs_t *fat, unsigned int start_cluster);
 
 
 

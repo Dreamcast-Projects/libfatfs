@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "utils.h"
+#include "fatfs.h"
 #include "fat_defs.h"
 
 int num_alpha(char *str)
@@ -557,7 +558,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	int ptr_loc;
 	int *locations = malloc(sizeof(int)*2);
 	unsigned char  *sector = malloc(512*sizeof(unsigned char)); /* Each sector is 512 bytes long */
-	cluster_node_t *cur_cluster = curdir->Data_Clusters;
+	unsigned int cur_cluster = curdir->StartCluster;
 	
 	locations[0] = -1;
 	locations[1] = -1;
@@ -567,7 +568,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 #endif
 	
 	/* Dealing with root directory (FAT16 only) */
-	if(cur_cluster == NULL && fat->fat_type == FAT16)  /* Fat16 root directory has a constant amount of memory to build entries while fat32's root directory uses clusters(expandable) */
+	if(cur_cluster == 0 && fat->fat_type == FAT16)  /* Fat16 root directory has a constant amount of memory to build entries while fat32's root directory uses clusters(expandable) */
 	{
 		for(i = 0; i < fat->root_dir_sectors_num; i++) {
 			
@@ -615,13 +616,14 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	else
 	{
 		/* Go through each cluster that belongs to this folder */
-		while(cur_cluster != NULL) 
+		while((cur_cluster < 0xFFF8 && fat->fat_type == FAT16)
+		   || (cur_cluster < 0xFFFFFF8 && fat->fat_type == FAT32)) 
 		{
 			/* Go through each sector in the cluster */
 			for(i = 0; i < fat->boot_sector.sectors_per_cluster; i++)
 			{
 				/* Get the sector location */
-				sector_loc = fat->data_sec_loc + (cur_cluster->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster + i;
+				sector_loc = fat->data_sec_loc + (cur_cluster - 2) * fat->boot_sector.sectors_per_cluster + i;
 				
 				/* Read it */
 				fat->dev->read_blocks(fat->dev, sector_loc, 1, sector); 
@@ -663,7 +665,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 			
 			/* Cant go across clusters to fulfill case */
 			empty_entry_count = 0;  
-			cur_cluster = cur_cluster->Next;
+			cur_cluster = read_fat_table_value(fat, cur_cluster*fat->byte_offset);
 		}
 	}
 	finish:
@@ -671,22 +673,17 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	/* Didnt find one? Allocate a new cluster for this folder and set loc accordingly. */
 	if(locations[0] == -1 && locations[1] == -1)
 	{
-		cur_cluster = curdir->Data_Clusters;
 		
 #ifdef FATFS_DEBUG
 		printf("Couldn't find the free entries. Allocating a Cluster...\n");
 #endif
 		
-		while(cur_cluster->Next != NULL)
-		{
-			cur_cluster = cur_cluster->Next;
-		}
+		cur_cluster = allocate_cluster(fat, curdir->EndCluster);
+		curdir->EndCluster = cur_cluster;
 		
-		cur_cluster->Next = allocate_cluster(fat, curdir->Data_Clusters);
+		clear_cluster(fat, cur_cluster);
 		
-		clear_cluster(fat, cur_cluster->Next->Cluster_Num);
-		
-		locations[0] = fat->data_sec_loc + ((cur_cluster->Next->Cluster_Num - 2) * fat->boot_sector.sectors_per_cluster);   
+		locations[0] = fat->data_sec_loc + ((cur_cluster - 2) * fat->boot_sector.sectors_per_cluster);   
 		locations[1] = 0;
 	}
 	
@@ -757,4 +754,22 @@ int strcasecmp( const char *s1, const char *s2 )
 		if (c1 == 0 || c1 != c2)
 			return c1 - c2;
 	}
+}
+
+unsigned int end_cluster(fatfs_t *fat, unsigned int start_cluster)
+{
+	unsigned int clust = start_cluster;
+	unsigned int value = clust;
+	
+	if(clust == 0)
+		return 0;
+	
+	while((clust < 0xFFF8 && fat->fat_type == FAT16)
+	   || (clust < 0xFFFFFF8 && fat->fat_type == FAT32))
+	{
+		value = clust;
+		clust = read_fat_table_value(fat, clust*fat->byte_offset);
+	}
+	
+	return value;
 }

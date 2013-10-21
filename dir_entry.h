@@ -107,11 +107,12 @@ struct fat_dir_entry
 };
 
 
-/* Used to make a linked list of clusters that make up a file/folder. Used so we dont have to keep checking the FAT. */
+/* Used to make a linked list of clusters that make up a file/folder. Used so we dont have to keep checking the FAT. 
 typedef struct cluster_node {
     unsigned int Cluster_Num;
     struct cluster_node *Next;
 } cluster_node_t;
+*/
 
 /* Structure used to build an N-ary tree of files/folders. Which makes it easier on us later on. 
    http://blog.mozilla.org/nnethercote/2012/03/07/n-ary-trees-in-c/ 
@@ -127,14 +128,16 @@ struct node_entry {
 	unsigned char Attr;                /* Holds the attributes of entry */
 	unsigned int FileSize;             /* Holds the size of the file */
 	unsigned int Location[2];          /* Location in FAT Table. Location[0]: Sector, Location[1]: Byte in that sector */
-	cluster_node_t *Data_Clusters;     /* A linked list to all the data clusters this file/folder uses */
+	unsigned int StartCluster;
+	unsigned int EndCluster;
+	unsigned int NumClusters;
 };
 
 /* Prototypes */
-cluster_node_t * build_cluster_linklist(fatfs_t *fat, int start_cluster);
+//cluster_node_t * build_cluster_linklist(fatfs_t *fat, int start_cluster);
 int generate_and_write_entry(fatfs_t *fat, char *filename, node_entry_t *newfile, node_entry_t *parent);
 void delete_entry(fatfs_t *fat, node_entry_t *file);
-cluster_node_t *allocate_cluster(fatfs_t *fat, cluster_node_t  *cluster);
+unsigned int allocate_cluster(fatfs_t *fat, unsigned int start_cluster);
 void delete_cluster_list(fatfs_t *fat, node_entry_t *file);
 void delete_tree_entry(node_entry_t * node);
 
