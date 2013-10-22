@@ -287,11 +287,14 @@ void delete_tree_entry(node_entry_t * node)
 
 unsigned int allocate_cluster(fatfs_t *fat, unsigned int end_clust)
 {
-    unsigned int fat_index = 2;
+    static unsigned int fat_index = 2;
+	
+	unsigned int i;
+	unsigned int cap = fat_index;
 	unsigned int marker = (fat->fat_type == FAT16) ? 0xFFFF : 0x0FFFFFFF;
     unsigned int cluster_num = 0;
 
-    /* We are now at the end of the LL. Search for a free cluster. */
+    /* Search for a free cluster. */
     while(fat_index < fat->boot_sector.bytes_per_sector*fat->table_size) { /* Go through Table one index at a time */
 	
 		cluster_num = read_fat_table_value(fat, fat_index*fat->byte_offset);
@@ -310,11 +313,30 @@ unsigned int allocate_cluster(fatfs_t *fat, unsigned int end_clust)
             
             return fat_index;
         }
-        else
-        {
-            fat_index++;
-        }
+      
+        fat_index++;
     }
+	
+	for(i = 2;i < cap; i++)
+	{
+		cluster_num = read_fat_table_value(fat, i*fat->byte_offset);
+        
+        /* If we found a free entry */
+        if(cluster_num == 0x00) 
+        {
+#ifdef FATFS_DEBUG
+            printf("allocate_cluster(dir_entry.c): Found a free cluster entry -- Index: %d\n", i); 
+#endif
+            if(end_clust != 0) /* Cant change what doesnt exist */
+            {
+				write_fat_table_value(fat, end_clust*fat->byte_offset, i);  /* Change the table to indicate an allocated cluster */
+			}
+			write_fat_table_value(fat, i*fat->byte_offset, marker);     /* Put the marker(0xFFFF or 0x0FFFFFFF) at the allocated cluster index */
+            
+            return i;
+        }
+	}
+	
 #ifdef FATFS_DEBUG
 	printf("allocate_cluster(dir_entry.c): Didnt find a free Cluster\n");
 #endif
@@ -766,7 +788,8 @@ node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int 
 	int var = ptr;
 	static int contin = 0;
 	unsigned char *str_temp;
-	unsigned char buf[512];
+	static int last_sec = 0;
+	static unsigned char buf[512];
 	
 	fat_lfn_entry_t lfn;
 	fat_dir_entry_t temp;
@@ -783,8 +806,13 @@ node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int 
 		memset(lfnbuf2, 0, sizeof(unsigned char)*256);
 	}
 
-	/* Read 1 sector */
-	fat->dev->read_blocks(fat->dev, sector_loc, 1, buf);
+	if(sector_loc != last_sec) /* Only read a new sector when we have to */
+	{
+		/* Read 1 sector */
+		fat->dev->read_blocks(fat->dev, sector_loc, 1, buf);
+		
+		last_sec = sector_loc;
+	}
 	
 	for(j = var/32; j < 16; j++) /* How many entries per sector(32 byte entry x 16 = 512 bytes = 1 sector) */
 	{
@@ -984,8 +1012,13 @@ node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int 
 			
 			new_entry->Attr = temp.Attr;
 			new_entry->FileSize = temp.FileSize;
-			new_entry->StartCluster = ((temp.FstClusHI << 16) | temp.FstClusLO);
-			new_entry->EndCluster = end_cluster(fat, new_entry->StartCluster);
+			
+			if(fn != NULL)  /* Only grab these when we will actually use them */
+			{
+				new_entry->StartCluster = ((temp.FstClusHI << 16) | temp.FstClusLO);
+				new_entry->EndCluster = end_cluster(fat, new_entry->StartCluster);
+			}
+			
 			new_entry->Location[0] = sector_loc; 
 			new_entry->Location[1] = var; /* Byte in sector */
 			
@@ -1049,7 +1082,6 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 				/* If the sector is located in the range of this cluster, break out and use this cluster */
 				if(sector_loc >= clust_sector_loc && sector_loc < (fat->boot_sector.sectors_per_cluster + clust_sector_loc))
 				{
-					//printf("Cluster num: %d Sector Location: %d\n", clust->Cluster_Num, sector_loc);
 					break;
 				}
 				
@@ -1063,7 +1095,6 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 		{
 			ptr = 0;
 			sector_loc += 1;
-			//printf("Changing Sector to %d\n", sector_loc);
 		}
 		
 		if((clust < 0xFFF8 && fat->fat_type == FAT16)
@@ -1079,7 +1110,6 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 				|| (clust < 0xFFFFFF8 && fat->fat_type == FAT32))
 				{
 					sector_loc = fat->data_sec_loc + ((clust - 2) * fat->boot_sector.sectors_per_cluster);
-					//printf("Changed sector: %d and cluster: %d\n", sector_loc, clust);
 				}
 				else
 				{
@@ -1123,8 +1153,6 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 		   || (clust < 0xFFFFFF8 && fat->fat_type == FAT32))
 		{
 			clust_sector_loc = fat->data_sec_loc + ((clust - 2) * fat->boot_sector.sectors_per_cluster);
-			
-			//printf("Start FOR Loop @ %d, PTR: %d\n", (sector_loc - clust_sector_loc), ptr);
 			
 			/* Go through all the sectors in this cluster */
 			for(i = (sector_loc - clust_sector_loc); i < fat->boot_sector.sectors_per_cluster; i++)

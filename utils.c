@@ -299,6 +299,7 @@ length of the basis is shortened until the new name fits in 8 characters. For ex
 		for(i = 0; i < strlen(fn_temp); i++)
 			fn_temp[i] = toupper((int)fn_temp[i]);
 	}
+	
 	while(search_directory(fat, curdir, fn_temp) != NULL)
 	{
 		if(diff > 99999)
@@ -429,24 +430,117 @@ fat_lfn_entry_t *generate_long_filename_entry(char * fn, unsigned char checksum,
 	lfn_entry->Checksum = checksum;
 	lfn_entry->Cluster = 0;
 	
+	memset(lfn_entry->FNPart1, 0, 10);
+	memset(lfn_entry->FNPart2, 0, 12);
+	memset(lfn_entry->FNPart3, 0, 4);
+	
 	/* Part One */
-	lfn_entry->FNPart1[0] = (filename[0] == 0xFF) ? 0xFFFF : filename[0];
-	lfn_entry->FNPart1[1] = (filename[1] == 0xFF) ? 0xFFFF : filename[1];
-	lfn_entry->FNPart1[2] = (filename[2] == 0xFF) ? 0xFFFF : filename[2];
-	lfn_entry->FNPart1[3] = (filename[3] == 0xFF) ? 0xFFFF : filename[3];
-	lfn_entry->FNPart1[4] = (filename[4] == 0xFF) ? 0xFFFF : filename[4];
+	if(filename[0] == 0xFF)
+	{
+		lfn_entry->FNPart1[0] = 0xFF;
+		lfn_entry->FNPart1[1] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart1[0] = filename[0];
+		
+	if(filename[1] == 0xFF)
+	{
+		lfn_entry->FNPart1[2] = 0xFF;
+		lfn_entry->FNPart1[3] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart1[2] = filename[1];
+		
+	if(filename[2] == 0xFF)
+	{
+		lfn_entry->FNPart1[4] = 0xFF;
+		lfn_entry->FNPart1[5] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart1[4] = filename[2];
+	
+	if(filename[3] == 0xFF)
+	{
+		lfn_entry->FNPart1[6] = 0xFF;
+		lfn_entry->FNPart1[7] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart1[6] = filename[3];
+		
+	if(filename[4] == 0xFF)
+	{
+		lfn_entry->FNPart1[8] = 0xFF;
+		lfn_entry->FNPart1[9] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart1[8] = filename[4];
+
 	
 	/* Part Two */
-	lfn_entry->FNPart2[0] = (filename[5] == 0xFF) ? 0xFFFF : filename[5];
-	lfn_entry->FNPart2[1] = (filename[6] == 0xFF) ? 0xFFFF : filename[6];
-	lfn_entry->FNPart2[2] = (filename[7] == 0xFF) ? 0xFFFF : filename[7];
-	lfn_entry->FNPart2[3] = (filename[8] == 0xFF) ? 0xFFFF : filename[8];
-	lfn_entry->FNPart2[4] = (filename[9] == 0xFF) ? 0xFFFF : filename[9];
-	lfn_entry->FNPart2[5] = (filename[10] == 0xFF) ? 0xFFFF : filename[10];
+	if(filename[5] == 0xFF)
+	{
+		lfn_entry->FNPart2[0] = 0xFF;
+		lfn_entry->FNPart2[1] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart2[0] = filename[5];
+		
+	if(filename[6] == 0xFF)
+	{
+		lfn_entry->FNPart2[2] = 0xFF;
+		lfn_entry->FNPart2[3] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart2[2] = filename[6];
+		
+	if(filename[7] == 0xFF)
+	{
+		lfn_entry->FNPart2[4] = 0xFF;
+		lfn_entry->FNPart2[5] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart2[4] = filename[7];
+	
+	if(filename[8] == 0xFF)
+	{
+		lfn_entry->FNPart2[6] = 0xFF;
+		lfn_entry->FNPart2[7] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart2[6] = filename[8];
+		
+	if(filename[9] == 0xFF)
+	{
+		lfn_entry->FNPart2[8] = 0xFF;
+		lfn_entry->FNPart2[9] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart2[8] = filename[9];
+		
+	if(filename[10] == 0xFF)
+	{
+		lfn_entry->FNPart2[10] = 0xFF;
+		lfn_entry->FNPart2[11] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart2[10] = filename[10];
 	
 	/* Part 3 */
-	lfn_entry->FNPart3[0] = (filename[11] == 0xFF) ? 0xFFFF : filename[11];
-	lfn_entry->FNPart3[1] = (filename[12] == 0xFF) ? 0xFFFF : filename[12];
+	if(filename[11] == 0xFF)
+	{
+		lfn_entry->FNPart3[0] = 0xFF;
+		lfn_entry->FNPart3[1] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart3[0] = filename[11];
+		
+	if(filename[12] == 0xFF)
+	{
+		lfn_entry->FNPart3[2] = 0xFF;
+		lfn_entry->FNPart3[3] = 0xFF;
+	}
+	else 
+		lfn_entry->FNPart3[2] = filename[12];
 	
 	lfn_entry->Attr = 0xF; /* Specifying it is a long name entry */
 

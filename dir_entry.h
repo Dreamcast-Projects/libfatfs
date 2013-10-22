@@ -130,7 +130,6 @@ struct node_entry {
 	unsigned int Location[2];          /* Location in FAT Table. Location[0]: Sector, Location[1]: Byte in that sector */
 	unsigned int StartCluster;
 	unsigned int EndCluster;
-	unsigned int NumClusters;
 };
 
 /* Prototypes */
