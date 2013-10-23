@@ -78,6 +78,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     }
     else if(found != NULL && (mode & O_CREAT) && (mode & O_EXCL)) {
         errno = EEXIST;
+		delete_struct_entry(found);
 		free(ufn);
         return NULL;
     }
@@ -93,6 +94,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     else if(found != NULL && (found->Attr & READ_ONLY) && ((mode & O_WRONLY) || (mode & O_RDWR))) 
     {
 		errno = EROFS;
+		delete_struct_entry(found);
 		free(ufn);
 		return NULL;
     }
@@ -216,26 +218,15 @@ static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
     fs = fh[fd].mnt->fs;
     rv = (ssize_t)cnt;
 	
-	/*
-	printf("Number of bytes to read: %d\n", cnt);
-	printf("Filesize: %d\n", fh[fd].node->FileSize);
-	printf("Gonna read %d bytes starting at ptr %d\n", (int)rv, (int)fh[fd].ptr);
-	*/
     if((fat_read_data(fs, fh[fd].node, &bbuf, (int)cnt, fh[fd].ptr)) != 0) { 
         mutex_unlock(&fat_mutex);
         errno = EBADF;
         return -1;
     }
-	/*
-	printf("After reading data\n");
-	*/
+	
     bbuf[cnt] = '\0';
     fh[fd].ptr += cnt;
-	
-	//printf("buf:\n\n%s\n", bbuf);
-	/*
-	printf("After copying data and incrementing pointer\n");
-*/
+
     /* We're done, clean up and return. */
     mutex_unlock(&fat_mutex);
 
@@ -406,8 +397,7 @@ static dirent_t *fs_fat_readdir(void *h) {
     memcpy(fh[fd].dirent.name, fh[fd].dir->Name, strlen(fh[fd].dir->Name));
     fh[fd].dirent.name[strlen(fh[fd].dir->Name)] = '\0';
     fh[fd].dirent.attr = fh[fd].dir->Attr;
-    fh[fd].dirent.time = 0; /*inode->i_mtime; 
-    fh[fd].ptr += dent->rec_len;*/
+    fh[fd].dirent.time = 0; 
 
     mutex_unlock(&fat_mutex);
 
@@ -606,6 +596,7 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 			if(fh[i].used == 1 && fh[i].node == f)
 			{
 				errno = EBUSY;
+				delete_struct_entry(f);
 				mutex_unlock(&fat_mutex);
 				return -1;
 			}
@@ -615,6 +606,7 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 		if(f->Attr & DIRECTORY)
 		{
 			errno = EISDIR;
+			delete_struct_entry(f);
 			mutex_unlock(&fat_mutex);
 			return -1;
 		}
@@ -623,6 +615,7 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 		if(f->Attr & READ_ONLY)
 		{
 			errno = EROFS;
+			delete_struct_entry(f);
 			mutex_unlock(&fat_mutex);
 			return -1;
 		}
@@ -679,6 +672,7 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
     /* Handle a few errors */
     if(found != NULL) {
         errno = EEXIST;  
+		delete_struct_entry(found);
 		free(ufn);
         return -1;
     }
@@ -692,6 +686,7 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
 	}
 		
 	free(ufn);
+	delete_struct_entry(found);
 
     return 0;
 }
@@ -722,6 +717,7 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 			if(fh[i].used == 1 && fh[i].node == f)
 			{
 				errno = EBUSY;
+				delete_struct_entry(f);
 				mutex_unlock(&fat_mutex);
 				return -1;
 			}
@@ -731,6 +727,7 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 		if(f->Attr & ARCHIVE)
 		{
 			errno = ENOTDIR;
+			delete_struct_entry(f);
 			mutex_unlock(&fat_mutex);
 			return -1;
 		}
@@ -739,6 +736,7 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 		if(f->Attr & READ_ONLY)
 		{
 			errno = EROFS;
+			delete_struct_entry(f);
 			mutex_unlock(&fat_mutex);
 			return -1;
 		}
@@ -746,6 +744,7 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 	   if(get_next_entry(mnt->fs, f, NULL) != NULL)
 	   {
 			errno = ENOTEMPTY;
+			delete_struct_entry(f);
 			mutex_unlock(&fat_mutex);
 			return -1;
 	   }
