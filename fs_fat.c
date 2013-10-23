@@ -168,14 +168,10 @@ static int fs_fat_close(void * h) {
 	
 	delete_struct_entry(fh[fd].node);
 	
-	fh[fd].node = NULL;
-	
 	if(fh[fd].dir != NULL)
 	{
 		delete_struct_entry(fh[fd].dir);
 	}
-	
-	fh[fd].dir = NULL;
 
     mutex_unlock(&fat_mutex);
 
@@ -913,6 +909,7 @@ int fs_fat_mount(const char *mp, kos_blockdev_t *dev, uint32_t flags) {
 
 int fs_fat_unmount(const char *mp) {
     fs_fat_fs_t *i;
+	int j;
     int found = 0, rv = 0;
 
     /* Find the fs in question */
@@ -928,6 +925,20 @@ int fs_fat_unmount(const char *mp) {
     if(found) {
 		
 		free(i->fs->mount); /* Free str mem */
+		
+		/* Handle dealloc all the open files */
+		for(j=0;j<MAX_FAT_FILES; j++)
+		{
+			if(fh[j].used == 1)
+			{
+				fh[j].used = 0;
+				fh[j].ptr = 0;
+				fh[j].mode = 0;
+
+				delete_struct_entry(fh[j].node);
+				delete_struct_entry(fh[j].dir);
+			}
+		}
 
         LIST_REMOVE(i, entry);
 
