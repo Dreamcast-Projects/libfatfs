@@ -71,6 +71,14 @@ Returns the size of the file.
 
 fs_total(fd); /* Return the size of the file in bytes */	
 
+================================= --- Rename --- ===================================
+
+Change the name or location of a file/folder
+
+rename("/sd/OldName.txt", "/sd/NewName.txt"); 
+
+rename("/sd/OldLoc.txt", "/sd/Folder/NewLoc.txt");
+
 ================================= --- ReadDir --- =================================
 
 Returns a pointer to a dirent structure representing the next directory entry in the directory stream
