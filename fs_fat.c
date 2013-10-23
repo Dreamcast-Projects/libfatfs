@@ -118,7 +118,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     if(fd >= MAX_FAT_FILES) {
         errno = ENFILE;
 		free(ufn);
-		delete_tree_entry(found);
+		delete_struct_entry(found);
         mutex_unlock(&fat_mutex);
         return NULL;
     }
@@ -127,7 +127,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     if((found->Attr & DIRECTORY) && (mode & (O_WRONLY | O_RDWR))) {
         errno = EISDIR;
 		free(ufn);
-		delete_tree_entry(found);
+		delete_struct_entry(found);
         mutex_unlock(&fat_mutex);
         return NULL;
     }
@@ -136,7 +136,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     if((mode & O_DIR) && !(found->Attr & DIRECTORY)) {
         errno = ENOTDIR;
 		free(ufn);
-		delete_tree_entry(found);
+		delete_struct_entry(found);
         mutex_unlock(&fat_mutex);
         return NULL;
     }
@@ -166,13 +166,13 @@ static int fs_fat_close(void * h) {
 		fh[fd].mode = 0;
     }
 	
-	delete_tree_entry(fh[fd].node);
+	delete_struct_entry(fh[fd].node);
 	
 	fh[fd].node = NULL;
 	
 	if(fh[fd].dir != NULL)
 	{
-		delete_tree_entry(fh[fd].dir);
+		delete_struct_entry(fh[fd].dir);
 	}
 	
 	fh[fd].dir = NULL;
@@ -303,9 +303,7 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
 static _off64_t fs_fat_seek64(void *h, _off64_t offset, int whence) {
     file_t fd = ((file_t)h) - 1;
     _off64_t rv;
-	/*
-	printf("Seek function is called\n");
-*/
+	
     mutex_lock(&fat_mutex);
 
     /* Check that the fd is valid */
@@ -344,9 +342,7 @@ static _off64_t fs_fat_seek64(void *h, _off64_t offset, int whence) {
 static _off64_t fs_fat_tell64(void *h) {
     file_t fd = ((file_t)h) - 1;
     _off64_t rv;
-	/*
-	printf("Tell function is called\n");
-    */
+	
     mutex_lock(&fat_mutex);
 
     if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
@@ -365,9 +361,7 @@ static _off64_t fs_fat_tell64(void *h) {
 static uint64 fs_fat_total64(void *h) {
     file_t fd = ((file_t)h) - 1;
     size_t rv;
-    /*
-	printf("Total function is called\n");
-	*/
+
     mutex_lock(&fat_mutex);
 
     if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
@@ -411,8 +405,6 @@ static dirent_t *fs_fat_readdir(void *h) {
         return NULL;
     }
 	
-	//printf("Filename: %s, Attr: %x, Size: %d Loc[0]: %d Loc[1]: %d\n", fh[fd].dir->Name, fh[fd].dir->Attr, fh[fd].dir->FileSize, fh[fd].dir->Location[0], fh[fd].dir->Location[1]);
-	
     /* Fill in the static directory entry */
     fh[fd].dirent.size = fh[fd].dir->FileSize;
     memcpy(fh[fd].dirent.name, fh[fd].dir->Name, strlen(fh[fd].dir->Name));
@@ -424,6 +416,172 @@ static dirent_t *fs_fat_readdir(void *h) {
     mutex_unlock(&fat_mutex);
 
     return &fh[fd].dirent;
+}
+
+static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
+	int i;
+    fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
+    node_entry_t *found = NULL;
+	char *cpy;
+	
+	unsigned char attr;
+	unsigned int start_cluster;
+	unsigned int filesize;
+
+    /* Make sure we get valid filenames. */
+    if(!fn1 || !fn2) {
+        errno = ENOENT;
+        return -1;
+    }
+	
+	/* Make a copy of old and cat mount to it */
+	cpy = malloc(strlen(fn1) + strlen(mnt->fs->mount) + 1);
+	memset(cpy, 0, strlen(fn1) + strlen(mnt->fs->mount) + 1);
+	strcat(cpy, mnt->fs->mount);
+	strcat(cpy, fn1);
+	cpy[strlen(fn1) + strlen(mnt->fs->mount) + 1] = '\0';
+	
+    /* No, you cannot move the root directory. */
+    if(strcasecmp(cpy, mnt->fs->mount) == 0) {
+        errno = EBUSY;
+        return -1;
+    }
+
+    /* Make sure the fs is writable */
+    if(!(mnt->mount_flags & FS_FAT_MOUNT_READWRITE)) {
+        errno = EROFS;
+        return -1;
+    }
+	
+	found = fat_search_by_path(mnt->fs, cpy);
+	
+	free(cpy);
+		
+	mutex_lock(&fat_mutex);
+	
+	if(found) {
+        /* Make sure it's not in use */
+		for(i=0;i<MAX_FAT_FILES; i++)
+		{
+			if(fh[i].used == 1 && fh[i].node == found)
+			{
+				errno = EBUSY;
+				delete_struct_entry(found);
+				mutex_unlock(&fat_mutex);
+				return -1;
+			}
+		}
+		
+		/* Make sure its not Read Only */
+		if(found->Attr & READ_ONLY)
+		{
+			errno = EROFS;
+			delete_struct_entry(found);
+			mutex_unlock(&fat_mutex);
+			return -1;
+		}
+       
+	    attr = found->Attr;
+		start_cluster = found->StartCluster;
+		filesize = found->FileSize;
+	   
+		/* Remove it from SD card. Doesnt remove allocated clusters */
+		delete_sd_entry(mnt->fs, found);
+
+		/* Free up struct entry */
+		delete_struct_entry(found);
+    }
+	else /* Not found */
+	{
+		errno = ENOENT;
+		mutex_unlock(&fat_mutex);
+		return -1;
+	}
+	
+	/* Make a copy of new and cat mount to it */
+	cpy = malloc(strlen(fn2) + strlen(mnt->fs->mount) + 1);
+	memset(cpy, 0, strlen(fn2) + strlen(mnt->fs->mount) + 1);
+	strcat(cpy, mnt->fs->mount);
+	strcat(cpy, fn2);
+	cpy[strlen(fn2) + strlen(mnt->fs->mount) + 1] = '\0';
+	
+	/* See if new filename already exists */
+	found = fat_search_by_path(mnt->fs, cpy);
+	
+	if(found)
+	{
+		free(cpy);
+		
+		if(found->Attr & DIRECTORY)
+		{
+			/* Make sure directory is empty besides "." and ".." */
+			if(get_next_entry(mnt->fs, found, NULL) != NULL)
+			{
+				errno = EEXIST;
+				delete_struct_entry(found);
+				mutex_unlock(&fat_mutex);
+				return -1;
+			}
+			/* If this is a directory then old one must be too */
+			else if(!(attr & DIRECTORY))
+			{
+				errno = EISDIR;
+				delete_struct_entry(found);
+				mutex_unlock(&fat_mutex);
+				return -1;
+			}
+			
+			/* So it is an empty directory and old name was a directory too. Work your magic */
+			delete_cluster_list(mnt->fs, found);
+			found->StartCluster = start_cluster;
+			update_fat_entry(mnt->fs, found);
+			
+			delete_struct_entry(found);
+			
+			mutex_unlock(&fat_mutex);
+			return 0;
+		}
+		else 
+		{
+			/* Its a file that already exists. Delete its clusters and point it to the old clusters */
+			delete_cluster_list(mnt->fs, found);
+			found->StartCluster = start_cluster;
+			found->FileSize = filesize;
+			update_fat_entry(mnt->fs, found);
+			
+			delete_struct_entry(found);
+			
+			mutex_unlock(&fat_mutex);
+			return 0;
+		}
+	}
+	
+	if((found = create_entry(mnt->fs, cpy, attr)) == NULL)
+	{
+		free(cpy);
+		mutex_unlock(&fat_mutex);
+		return -1;
+	}
+	
+	if(attr & DIRECTORY)
+	{
+		delete_cluster_list(mnt->fs, found);
+		found->StartCluster = start_cluster;
+		update_fat_entry(mnt->fs, found);
+	}
+	else
+	{
+		found->StartCluster = start_cluster;
+		found->FileSize = filesize;
+		update_fat_entry(mnt->fs, found);
+	}
+	
+	free(cpy);
+	delete_struct_entry(found);
+
+    mutex_unlock(&fat_mutex);
+	
+    return 0;
 }
 
 static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
@@ -474,10 +632,13 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 		}
        
 		/* Remove it from SD card */
-		delete_entry(mnt->fs, f);
+		delete_sd_entry(mnt->fs, f);
+		
+		/* Free Data Clusters in FAT table */
+		delete_cluster_list(mnt->fs, f);
 
 		/* Remove it from directory tree */
-		delete_tree_entry(f);
+		delete_struct_entry(f);
     }
 	else /* Not found */
 	{
@@ -594,10 +755,13 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 	   }
 	   
 		/* Remove it from SD card */
-		delete_entry(mnt->fs, f);
+		delete_sd_entry(mnt->fs, f);
+		
+		/* Free Data Clusters in FAT table */
+		delete_cluster_list(mnt->fs, f);
 
 		/* Remove it from directory tree */
-		delete_tree_entry(f);
+		delete_struct_entry(f);
     }
 	else /* Not found */
 	{
@@ -667,7 +831,7 @@ static vfs_handler_t vh = {
     NULL,            		   /* total */
     fs_fat_readdir,            /* readdir */
     NULL,                      /* ioctl */
-    NULL,                      /* rename */
+    fs_fat_rename,             /* rename */
     fs_fat_unlink,             /* unlink(delete a file) */
     NULL,                      /* mmap */
     NULL,                      /* complete */

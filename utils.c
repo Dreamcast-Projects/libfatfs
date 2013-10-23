@@ -606,6 +606,7 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 	
 	if(attr == 0x0F) /* Long file entry */
 	{
+		memset(sector + loc[1], 0, ENTRYSIZE);
 		memcpy(sector + loc[1] + ORDER, &(lfn_entry->Order), 1);
 		memcpy(sector + loc[1] + FNPART1, lfn_entry->FNPart1, 10);
 		memcpy(sector + loc[1] + ATTRIBUTE, &(lfn_entry->Attr), 1);
@@ -618,6 +619,7 @@ int write_entry(fatfs_t *fat, void * entry, unsigned char attr, int loc[])
 		tme = generate_time(timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec/2);
 		date = generate_date(1900 + timeinfo->tm_year, timeinfo->tm_mon+1, timeinfo->tm_mday);
 		
+		memset(sector + loc[1], 0, ENTRYSIZE);
 		memcpy(sector + loc[1] + FILENAME, f_entry->FileName, 8);
 		memcpy(sector + loc[1] + EXTENSION, f_entry->Ext, 3);
 		memcpy(sector + loc[1] + ATTRIBUTE, &(f_entry->Attr), 1);
@@ -683,7 +685,6 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 					
 					if(empty_entry_count == num_entries)
 					{
-						//printf("Root -- Found location with %d free entries \n", num_entries);
 						if(ptr_loc < ((num_entries - 1)* 32)) /* Corner case: traveling across sectors to fill the case */
 						{
 							locations[0] = sector_loc - 1;  /* Go to previous sector */ 
@@ -733,7 +734,6 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 						
 						if(empty_entry_count == num_entries)
 						{
-							//printf("Other -- Found location with %d free entries \n", num_entries);
 							if(ptr_loc < ((num_entries - 1)* 32)) /* Corner case: traveling across sectors to fill the case */
 							{
 								locations[0] = sector_loc - 1;  /* Go to previous sector */

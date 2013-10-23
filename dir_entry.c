@@ -276,8 +276,11 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	free(sector);
 }
 
-void delete_tree_entry(node_entry_t * node)
+void delete_struct_entry(node_entry_t * node)
 {
+	if(node == NULL)
+		return;
+		
     free(node->Name);      /* Free the name */
 	free(node->ShortName); /* Free the shortname */
 	free(node);
@@ -479,14 +482,11 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
     return 0;
 }
 
-void delete_entry(fatfs_t *fat, node_entry_t *file)
+void delete_sd_entry(fatfs_t *fat, node_entry_t *file)
 {
 	unsigned int sector_loc = file->Location[0];
 	int ptr = file->Location[1];
 	unsigned char sector[512];
-
-	/* Free LL of Data Clusters */
-	delete_cluster_list(fat, file);
 	
 	/* Delete Long file name entries (if any) */
 	ptr -= 32;
@@ -563,7 +563,7 @@ node_entry_t *fat_search_by_path(fatfs_t *fat, const char *fn)
             if((rv = search_directory(fat, temp, pch)) != NULL) 
             {
 				pch = strtok (NULL, "/");
-				delete_tree_entry(temp);
+				delete_struct_entry(temp);
 				temp = rv;
 			}
 			else 
@@ -604,7 +604,7 @@ node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
 	temp = malloc(sizeof(node_entry_t));
 	temp->Name = (unsigned char *)remove_all_chars(fat->mount, '/');          /*  */
 	temp->ShortName = (unsigned char *)remove_all_chars(fat->mount, '/');
-	temp->Attr = DIRECTORY;           /* Root directory is obviously a directory */
+	temp->Attr = DIRECTORY;          /* Root directory is obviously a directory */
 	temp->StartCluster = cluster;    /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
 	temp->EndCluster = end_cluster(fat, temp->StartCluster);
 	
@@ -622,13 +622,13 @@ node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
 				{
 					free(ufn);
 					errno = EROFS;
-					delete_tree_entry(temp);
-					delete_tree_entry(rv);
+					delete_struct_entry(temp);
+					delete_struct_entry(rv);
 					return NULL;
 				}
 				
                 pch = strtok (NULL, "/");
-                delete_tree_entry(temp);
+                delete_struct_entry(temp);
 				temp = rv;
             }
             else 
@@ -639,14 +639,14 @@ node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
                 if((pch = strtok (NULL, "/"))) { /* See if there is more to parse through */
 					free(ufn);
                     errno = ENOTDIR;
-					delete_tree_entry(temp);
+					delete_struct_entry(temp);
                     return NULL;               /* if there is that means we are looking in a directory */
                 }                              /* that doesn't exist. */
                 
                 /* Make sure the filename is valid */
                 if(correct_filename(filename) == -1) {
 					free(ufn);
-					delete_tree_entry(temp);
+					delete_struct_entry(temp);
                     return NULL;
                 }
            
@@ -669,8 +669,8 @@ node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
 #endif
 					free(ufn);
 					errno = EDQUOT;
-					delete_tree_entry(temp);
-                    delete_tree_entry(newfile);  /* This doesn't take care of removing clusters from SD card */
+					delete_struct_entry(temp);
+                    delete_struct_entry(newfile);  /* This doesn't take care of removing clusters from SD card */
                     
                     return NULL;  
                 }
@@ -715,7 +715,7 @@ node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
 				}
 				
 				free(ufn);
-				delete_tree_entry(temp);
+				delete_struct_entry(temp);
 				
                 return newfile;
             }
@@ -723,7 +723,7 @@ node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
 	}
 	
 	free(ufn);
-	delete_tree_entry(temp);
+	delete_struct_entry(temp);
 	
 	 /* Path was invalid from the beginning */
     errno = ENOTDIR;
@@ -1069,7 +1069,7 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 		sector_loc = last_entry->Location[0];
 		
 		/* Free up the last directory since we dont need it anymore */
-		delete_tree_entry(last_entry);
+		delete_struct_entry(last_entry);
 		
 		if(clust != 0)
 		{	

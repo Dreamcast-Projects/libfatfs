@@ -106,20 +106,6 @@ struct fat_dir_entry
     unsigned int FileSize;      /* The size of the file in bytes. This should be 0 if the file type is a folder */
 };
 
-
-/* Used to make a linked list of clusters that make up a file/folder. Used so we dont have to keep checking the FAT. 
-typedef struct cluster_node {
-    unsigned int Cluster_Num;
-    struct cluster_node *Next;
-} cluster_node_t;
-*/
-
-/* Structure used to build an N-ary tree of files/folders. Which makes it easier on us later on. 
-   http://blog.mozilla.org/nnethercote/2012/03/07/n-ary-trees-in-c/ 
-   
-   Files/folders in the same directory are linked together in a Singly-Linked List(*Next) 
-*/
-
 typedef struct node_entry node_entry_t;
 
 struct node_entry {
@@ -133,12 +119,11 @@ struct node_entry {
 };
 
 /* Prototypes */
-//cluster_node_t * build_cluster_linklist(fatfs_t *fat, int start_cluster);
 int generate_and_write_entry(fatfs_t *fat, char *filename, node_entry_t *newfile, node_entry_t *parent);
-void delete_entry(fatfs_t *fat, node_entry_t *file);
+void delete_sd_entry(fatfs_t *fat, node_entry_t *file);
 unsigned int allocate_cluster(fatfs_t *fat, unsigned int start_cluster);
 void delete_cluster_list(fatfs_t *fat, node_entry_t *file);
-void delete_tree_entry(node_entry_t * node);
+void delete_struct_entry(node_entry_t * node);
 
 void update_fat_entry(fatfs_t *fat, node_entry_t *file);
 
