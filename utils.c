@@ -11,6 +11,9 @@
 #include "fatfs.h"
 #include "fat_defs.h"
 
+/* Used to hold FSInfo sector so we dont have to keep reading it. */
+static unsigned char buffer[512];
+
 int num_alpha(char *str)
 {
 	int count = 0;
@@ -859,41 +862,24 @@ unsigned int end_cluster(fatfs_t *fat, unsigned int start_cluster)
 
 unsigned int get_fsinfo_nextfree(kos_blockdev_t *bd, unsigned short sector_loc)
 {
-	unsigned char *sector;
 	unsigned int clust_index;
 	
     if(bd == NULL) 
 		return -EIO;
-
-    if(!(sector = malloc(512*sizeof(unsigned char)))) 	
-		return -ENOMEM;
 		
-	if(bd->read_blocks(bd, sector_loc, 1, sector))
-	{
-		free(sector);
+	if(bd->read_blocks(bd, sector_loc, 1, buffer))
         return -EIO;
-	}
 		
-	memcpy(&clust_index, sector + NEXTFREE, 4);
+	memcpy(&clust_index, buffer + NEXTFREE, 4);
 	
 	if(clust_index == 0xFFFFFFFF)
 		clust_index = 2;
 	
-    free(sector);
-	
     return clust_index;	
-
 }
 
 void set_fsinfo_nextfree(fatfs_t *fat)
 {
-	unsigned char *sector = malloc(512*sizeof(unsigned char));
-	
-	fat->dev->read_blocks(fat->dev, fat->fsinfo_sector, 1, sector); 
-
-	memcpy(sector + NEXTFREE, &(fat->next_free_fat_index), 4);
-	
-	fat->dev->write_blocks(fat->dev, fat->fsinfo_sector, 1, sector);
-	
-	free(sector);
+	memcpy(buffer + NEXTFREE, &(fat->next_free_fat_index), 4);
+	fat->dev->write_blocks(fat->dev, fat->fsinfo_sector, 1, buffer);
 }
