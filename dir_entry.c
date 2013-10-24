@@ -307,7 +307,8 @@ unsigned int allocate_cluster(fatfs_t *fat, unsigned int end_clust)
 			
 			fat->next_free_fat_index = fat_index; /* Save this index for next time */
 			
-			set_fsinfo_nextfree(fat); /* Write it to FSInfo sector */
+			if(fat->fat_type == FAT32)
+				set_fsinfo_nextfree(fat); /* Write it to FSInfo sector which only exists for Fat32 */
 			
             return fat_index;
         }
@@ -334,7 +335,8 @@ unsigned int allocate_cluster(fatfs_t *fat, unsigned int end_clust)
             
 			fat->next_free_fat_index = i; /* Save this index for next time */
 			
-			set_fsinfo_nextfree(fat); /* Write it to FSInfo sector */
+			if(fat->fat_type == FAT32)
+				set_fsinfo_nextfree(fat); /* Write it to FSInfo sector which only exists for Fat32 */
 			
             return i;
         }
