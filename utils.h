@@ -26,7 +26,7 @@ unsigned int end_cluster(fatfs_t *fat, unsigned int start_cluster);
 
 int strcasecmp( const char *s1, const char *s2 );
 
-unsigned int get_fsinfo_nextfree(kos_blockdev_t *bd, unsigned short fat_info);
+unsigned int get_fsinfo_nextfree(fatfs_t *fat, unsigned short fat_info);
 void set_fsinfo_nextfree(fatfs_t *fat);
 
 __END_DECLS

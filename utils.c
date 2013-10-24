@@ -860,14 +860,11 @@ unsigned int end_cluster(fatfs_t *fat, unsigned int start_cluster)
 	return value;
 }
 
-unsigned int get_fsinfo_nextfree(kos_blockdev_t *bd, unsigned short sector_loc)
+unsigned int get_fsinfo_nextfree(fatfs_t *fat, unsigned short sector_loc)
 {
 	unsigned int clust_index;
 	
-    if(bd == NULL) 
-		return -EIO;
-		
-	if(bd->read_blocks(bd, sector_loc, 1, buffer))
+	if(fat->dev->read_blocks(fat->dev, sector_loc, 1, buffer))
         return -EIO;
 		
 	memcpy(&clust_index, buffer + NEXTFREE, 4);

@@ -98,6 +98,9 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 		rv->root_dir_sec_loc = rv->boot_sector.reserved_sector_count + (rv->boot_sector.table_count * rv->boot_sector.table_size_16); 
 		rv->file_alloc_tab_sec_loc = rv->boot_sector.reserved_sector_count;
 		rv->data_sec_loc = rv->root_dir_sec_loc + rv->root_dir_sectors_num;
+		
+		/* Makes sure we already have something useful in the FAT table cache */
+		read_fat_table_value(rv, 4); /* rv->byte_offset * rv->next_free_fat_index = 4 */
 	}
 	else                                 /* Fat32 */
 	{
@@ -108,12 +111,15 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 		rv->byte_offset = 4;
 		rv->root_cluster_num = fat32_boot_ext.root_cluster;
 		rv->fsinfo_sector = fat32_boot_ext.fat_info;
-		rv->next_free_fat_index = get_fsinfo_nextfree(bd, rv->fsinfo_sector);
+		rv->next_free_fat_index = get_fsinfo_nextfree(rv, rv->fsinfo_sector);
 		rv->table_size = fat32_boot_ext.table_size_32;
 		rv->root_dir_sectors_num = 0;
 		rv->root_dir_sec_loc = rv->boot_sector.reserved_sector_count + (rv->boot_sector.table_count * fat32_boot_ext.table_size_32); 
 		rv->file_alloc_tab_sec_loc = rv->boot_sector.reserved_sector_count;
 		rv->data_sec_loc = rv->root_dir_sec_loc + rv->root_dir_sectors_num;
+		
+		/* Makes sure we already have something useful in the FAT table cache */
+		read_fat_table_value(rv, 4*rv->next_free_fat_index); 
 	}
 	
 	if(rv->boot_sector.total_sectors_16 != 0) {
