@@ -15,10 +15,8 @@ __BEGIN_DECLS
 
 #define FAT16TYPE1 0x04  /* 32MB */
 #define FAT16TYPE2 0x06  /* Over 32 to 2GB */ 
-#define FAT32TYPE1 0x0B  /*  */
-#define FAT32TYPE2 0x0C  /*  */
-
-/* typedef struct fatfs fatfs_t; */
+#define FAT32TYPE1 0x0B  /* FAT32 with CHS addressing */
+#define FAT32TYPE2 0x0C  /* FAT32 with LBA disk access */
 
 struct fatfs
 {
@@ -30,19 +28,15 @@ struct fatfs
 	unsigned short   fat_type;                 /* 0 - Fat16, 1 - Fat32 */
 	unsigned short   table_size;               /* Number of sectors the FAT table uses */
 	unsigned short   byte_offset;              /* 2 - Fat16. 4 - Fat32 */
-	unsigned int     root_cluster_num;         /* Fat32 only. */
+	unsigned int     root_cluster_num;         /* Fat32 only */
+	unsigned short   fsinfo_sector;            /* Fat32 only */ 
+	unsigned int     next_free_fat_index;      /* Holds the last cluster index that was allocated */
     unsigned short   root_dir_sectors_num;     /* The number of sectors the root directory consists of. Should be zero for Fat32 */
     unsigned short   root_dir_sec_loc;         /* The first sector where the root directory starts */
     unsigned short   file_alloc_tab_sec_loc;   /* The first sector where the fat allocation table starts */
     unsigned short   data_sec_loc;             /* The first sector where the data starts(Location of cluster 2) */
     unsigned int     data_sectors_num;         /* The number of data sectors. Data sectors are sectors that exist after the boot sector, fat tables, and root directory */
     unsigned int     total_clusters_num;       /* The total number of data clusters. */
-
-    struct node_entry     *root;
-
-    /* [Optional] Thread Safety */
-    void             (*fl_lock)(void);
-    void             (*fl_unlock)(void);
 };
 
 __END_DECLS

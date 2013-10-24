@@ -1,5 +1,4 @@
 
-
 #ifndef _FAT_DIR_ENTRY_H_
 #define _FAT_DIR_ENTRY_H_
 
@@ -36,6 +35,10 @@ __BEGIN_DECLS
 #define CHECKSUM  0x0D
 #define FNPART2   0x0E
 #define FNPART3   0x1C
+
+/* FSInfo Sector offsets */
+#define FREECOUNT 0x1E8
+#define NEXTFREE  0x1EC
 
 /* Other */
 #define ENTRYSIZE 32       /* Size of an entry whether it be a lfn or just a regular file entry */
@@ -120,12 +123,14 @@ struct node_entry {
 
 /* Prototypes */
 int generate_and_write_entry(fatfs_t *fat, char *filename, node_entry_t *newfile, node_entry_t *parent);
-void delete_sd_entry(fatfs_t *fat, node_entry_t *file);
-unsigned int allocate_cluster(fatfs_t *fat, unsigned int start_cluster);
-void delete_cluster_list(fatfs_t *fat, node_entry_t *file);
-void delete_struct_entry(node_entry_t * node);
 
-void update_fat_entry(fatfs_t *fat, node_entry_t *file);
+void delete_struct_entry(node_entry_t * node);
+void delete_cluster_list(fatfs_t *fat, node_entry_t *file);
+
+unsigned int allocate_cluster(fatfs_t *fat, unsigned int start_cluster);
+
+void update_sd_entry(fatfs_t *fat, node_entry_t *file);
+void delete_sd_entry(fatfs_t *fat, node_entry_t *file);
 
 int fat_read_data(fatfs_t *fat, node_entry_t *file, unsigned char **buf, int cnt, int ptr);
 int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *buf, int count, int ptr);

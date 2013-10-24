@@ -6,30 +6,33 @@
 
 #include "boot_sector.h"
 
-int fat_read_bootsector (fat_BS_t *bs, kos_blockdev_t *bd) 
+int fat_read_bootsector (kos_blockdev_t *bd, fat_BS_t *bs) 
 {
-    uint8_t *buf;
+    unsigned char *buf;
 	
     if(bd == NULL) 
 		return -EIO;
 
-    if(!(buf = (uint8_t *)malloc(512*sizeof(uint8)))) 	
+    if(!(buf = malloc(512*sizeof(unsigned char)))) 	
 		return -ENOMEM;
 		
 	if(bd->read_blocks(bd, 0, 1, buf))
+	{
+		free(buf);
         return -EIO;
+	}
 		
 	memcpy(bs, buf, sizeof(fat_BS_t));
     free(buf);
+	
     return 0;	
-
 }
 
 #ifdef FATFS_DEBUG
 void fat_print_bootsector(const fat_BS_t* fat) {
 	fat_extBS_32_t ext;
 
-    printf("\n\nFAT2FS Boot Sector: \n\n");
+    printf("\n\nFATFS Boot Sector: \n\n");
     printf("Boot JMP: %x:%x:%x\n", fat->bootjmp[0],fat->bootjmp[1],fat->bootjmp[2]);
 	printf("OEM Name: %s\n", fat->oem_name);
 	printf("Bytes Per Sector: %d\n", fat->bytes_per_sector);
@@ -53,6 +56,7 @@ void fat_print_bootsector(const fat_BS_t* fat) {
 		
 		printf("Table Size 32(Fat32 Only): %d\n", ext.table_size_32);
 		printf("Starting Root Cluster(Fat32 Only): %d\n", ext.root_cluster);
+		printf("FSInfo Sector location(Fat32 Only): %d\n", ext.fat_info);
 	}
 	printf("\n\n");
 }

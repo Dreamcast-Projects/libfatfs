@@ -95,7 +95,7 @@ int correct_filename(const char* str)
    
    while (*c)
    {
-       if (strchr(invalid_characters, *c))
+       if(strchr(invalid_characters, *c))
        {
 #ifdef FATFS_DEBUG
           printf("Invalid filename, char found: %c\n", *c); 
@@ -182,16 +182,6 @@ char *generate_short_filename(fatfs_t *fat, node_entry_t *curdir, char * fn, int
 an extension, then truncate the first part to 6 characters and the extension to 3 characters. For
 example, "I Am A Dingbat" becomes "IAmADi" and not "IAmADing.bat", and "Super Duper
 Editor.Exe" becomes "SuperD.Exe".*/
-/*
-	Truncate the filename to 6 chars(length)
-	if(strlen(filename) > 6)
-		filename[6] = '\0';
-
-	if(strlen(ext) > 3)
-		ext[3] = '\0';  //truncate it to 3 characters (ext)
-	
-	printf("Truncate - Filename: %s Extension: %s \n", filename, ext);
-	*/
 
 /*
 5. If the name does not contain an extension then a "-1" is appended to the name. If the name does
@@ -199,7 +189,6 @@ contain an extension, then a "-1" is appended to the first part of the name, pri
 example, "MyFile" becomes "MyFile-1, and "Junk.bat" becomes "Junk-1.bat". This numeric value is
 always added to help reduce the conflicts in the 8.3 name space for automatic generated names. 
 */
-
 	if(strlen(filename) > 8)
 	{
 		/* Concate the filename */
@@ -786,7 +775,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	return locations;
 }
 
-void clear_cluster(fatfs_t *fat, int cluster_num)
+void clear_cluster(fatfs_t *fat, unsigned int cluster_num)
 {
 	int i;
 	int sector_loc;
@@ -866,4 +855,45 @@ unsigned int end_cluster(fatfs_t *fat, unsigned int start_cluster)
 	}
 	
 	return value;
+}
+
+unsigned int get_fsinfo_nextfree(kos_blockdev_t *bd, unsigned short sector_loc)
+{
+	unsigned char *sector;
+	unsigned int clust_index;
+	
+    if(bd == NULL) 
+		return -EIO;
+
+    if(!(sector = malloc(512*sizeof(unsigned char)))) 	
+		return -ENOMEM;
+		
+	if(bd->read_blocks(bd, sector_loc, 1, sector))
+	{
+		free(sector);
+        return -EIO;
+	}
+		
+	memcpy(&clust_index, sector + NEXTFREE, 4);
+	
+	if(clust_index == 0xFFFFFFFF)
+		clust_index = 2;
+	
+    free(sector);
+	
+    return clust_index;	
+
+}
+
+void set_fsinfo_nextfree(fatfs_t *fat)
+{
+	unsigned char *sector = malloc(512*sizeof(unsigned char));
+	
+	fat->dev->read_blocks(fat->dev, fat->fsinfo_sector, 1, sector); 
+
+	memcpy(sector + NEXTFREE, &(fat->next_free_fat_index), 4);
+	
+	fat->dev->write_blocks(fat->dev, fat->fsinfo_sector, 1, sector);
+	
+	free(sector);
 }

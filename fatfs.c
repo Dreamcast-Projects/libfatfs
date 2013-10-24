@@ -1,7 +1,3 @@
-/* KallistiOS ##version##
-
-   fat2fs.c
-*/
 
 #include <stdio.h>
 #include <errno.h>
@@ -19,7 +15,7 @@
 static short sector_offset = -1; /* Makes sure we always have to read a sector (FAT table) first */
 static unsigned char buffer[512];
 
-/* Read the Fat table from the SD card and stores it in table */
+/* Read the Fat table from the SD card and stores it in table(cache: 512 bytes) */
 unsigned int read_fat_table_value(fatfs_t *fat, int byte_index) 
 {
 	short ptr_offset;
@@ -30,9 +26,6 @@ unsigned int read_fat_table_value(fatfs_t *fat, int byte_index)
 	{
 		/* Calculate sector offset from file_alloc_tab_sec_loc */
 		sector_offset = byte_index / fat->boot_sector.bytes_per_sector;
-	
-		/* Clear buffer */
-		memset(buffer, 0, 512*sizeof(unsigned char));
 	
 		/* Read new sector */
 		fat->dev->read_blocks(fat->dev, fat->file_alloc_tab_sec_loc + sector_offset, 1, buffer);
@@ -54,9 +47,6 @@ void write_fat_table_value(fatfs_t *fat, int byte_index, int value)
 	{
 		/* Calculate sector offset from file_alloc_tab_sec_loc */
 		sector_offset = byte_index / fat->boot_sector.bytes_per_sector;
-	
-		/* Clear buffer */
-		memset(buffer, 0, 512*sizeof(unsigned char));
 	
 		/* Read new sector */
 		fat->dev->read_blocks(fat->dev, fat->file_alloc_tab_sec_loc + sector_offset, 1, buffer);
@@ -86,7 +76,7 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	memset(rv, 0, sizeof(fatfs_t));
 	rv->dev = bd;
 
-	if(fat_read_bootsector(&(rv->boot_sector), bd)) {
+	if(fat_read_bootsector(bd, &(rv->boot_sector))) {
 		free(rv);
 		bd->shutdown(bd);
 		return NULL;
@@ -101,6 +91,8 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 		rv->fat_type = FAT16;
 		rv->byte_offset = 2;
 		rv->root_cluster_num = 0; /* Not used. Set it to zero */
+		rv->fsinfo_sector = 0; /* Not used. */
+		rv->next_free_fat_index = 2;
 		rv->table_size = rv->boot_sector.table_size_16;
 		rv->root_dir_sectors_num = ((rv->boot_sector.root_entry_count * ENTRYSIZE) + (rv->boot_sector.bytes_per_sector - 1)) / rv->boot_sector.bytes_per_sector;
 		rv->root_dir_sec_loc = rv->boot_sector.reserved_sector_count + (rv->boot_sector.table_count * rv->boot_sector.table_size_16); 
@@ -115,6 +107,8 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 		rv->fat_type = FAT32;
 		rv->byte_offset = 4;
 		rv->root_cluster_num = fat32_boot_ext.root_cluster;
+		rv->fsinfo_sector = fat32_boot_ext.fat_info;
+		rv->next_free_fat_index = get_fsinfo_nextfree(bd, rv->fsinfo_sector);
 		rv->table_size = fat32_boot_ext.table_size_32;
 		rv->root_dir_sectors_num = 0;
 		rv->root_dir_sec_loc = rv->boot_sector.reserved_sector_count + (rv->boot_sector.table_count * fat32_boot_ext.table_size_32); 
@@ -137,7 +131,8 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	printf("File allocation table sector location: %d\n", rv->file_alloc_tab_sec_loc);
 	printf("File/folder data starts at sector: %d\n", rv->data_sec_loc);
 	printf("Total number of data sectors: %d\n", rv->data_sectors_num);
-	printf("Total number of clusters: %d\n\n\n", rv->total_clusters_num);
+	printf("Total number of clusters: %d\n", rv->total_clusters_num);
+	printf("Next free cluster: %d\n\n\n", rv->next_free_fat_index);
 #endif
 	
 	rv->mount = malloc(strlen(mp)+ 1);

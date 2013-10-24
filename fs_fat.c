@@ -1,5 +1,4 @@
 
-
 #include <errno.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -41,7 +40,7 @@ static struct {
     int           mode;       /* O_RDONLY, O_WRONLY, O_RDWR, O_TRUNC, O_DIR, etc */
     uint32        ptr;        /* Current read position in bytes */
     dirent_t      dirent;     /* A static dirent to pass back to clients */
-    node_entry_t  *node;	  /* Link to node in directory (binary) tree */
+    node_entry_t  *node;	  /* Pointer to node */
     node_entry_t  *dir;       /* Used by opendir */
     fs_fat_fs_t   *mnt;       /* Which mount instance are we using? */
 } fh[MAX_FAT_FILES];
@@ -49,8 +48,9 @@ static struct {
 /* Open a file or directory */
 static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     file_t fd;
-    char *ufn = NULL; 
     fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
+	
+	char *ufn = NULL; 
     node_entry_t *found = NULL;
 
     /* Make sure if we're going to be writing to the file that the fs is mounted
@@ -63,8 +63,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
 	
 	/* Make sure to add the root directory to the fn */
 	ufn = malloc(strlen(fn)+strlen(mnt->fs->mount)+1); 
-    memset(ufn, 0, strlen(fn)+strlen(mnt->fs->mount)+1);    
-
+	memset(ufn, 0, strlen(fn)+strlen(mnt->fs->mount)+1);
     strcat(ufn, mnt->fs->mount);
     strcat(ufn, fn);
 
@@ -91,8 +90,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
             return NULL;
 		}
     }
-    else if(found != NULL && (found->Attr & READ_ONLY) && ((mode & O_WRONLY) || (mode & O_RDWR))) 
-    {
+    else if(found != NULL && (found->Attr & READ_ONLY) && ((mode & O_WRONLY) || (mode & O_RDWR))) {
 		errno = EROFS;
 		delete_struct_entry(found);
 		free(ufn);
@@ -104,7 +102,7 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     {
         found->FileSize = 0;
         delete_cluster_list(mnt->fs, found);
-		update_fat_entry(mnt->fs, found);
+		update_sd_entry(mnt->fs, found);
     }
 
     /* Find a free file handle */
@@ -169,11 +167,7 @@ static int fs_fat_close(void * h) {
     }
 	
 	delete_struct_entry(fh[fd].node);
-	
-	if(fh[fd].dir != NULL)
-	{
-		delete_struct_entry(fh[fd].dir);
-	}
+	delete_struct_entry(fh[fd].dir);
 
     mutex_unlock(&fat_mutex);
 
@@ -189,7 +183,7 @@ static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
     mutex_lock(&fat_mutex);
 
     /* Check that the fd is valid */
-    if(fd >= MAX_FAT_FILES || !fh[fd].used) {
+    if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_WRONLY)) {
         mutex_unlock(&fat_mutex);
         errno = EBADF;
         return -1;
@@ -199,13 +193,6 @@ static ssize_t fs_fat_read(void *h, void *buf, size_t cnt) {
     if(fh[fd].mode & O_DIR) {
         mutex_unlock(&fat_mutex);
         errno = EISDIR;
-        return -1;
-    }
-    
-    /* Check and make sure it is opened for reading */
-    if(fh[fd].mode & O_WRONLY) {
-        mutex_unlock(&fat_mutex);
-        errno = EBADF;
         return -1;
     }
 
@@ -242,14 +229,7 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
     mutex_lock(&fat_mutex);
 
     /* Check that the fd is valid */
-    if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR)) {
-        mutex_unlock(&fat_mutex);
-        errno = EBADF;
-        return -1;
-    }
-    
-    /* Check and make sure it is opened for Writing */
-    if(fh[fd].mode & O_RDONLY) {
+    if(fd >= MAX_FAT_FILES || !fh[fd].used || (fh[fd].mode & O_DIR) || (fh[fd].mode & O_RDONLY)) {
         mutex_unlock(&fat_mutex);
         errno = EBADF;
         return -1;
@@ -280,7 +260,7 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
     fh[fd].node->FileSize = (fh[fd].ptr > fh[fd].node->FileSize) ? fh[fd].ptr : fh[fd].node->FileSize; /* Increase the file size if need be(which ever is bigger) */
 
     /* Write it to the FAT */
-    update_fat_entry(fs, fh[fd].node);
+    update_sd_entry(fs, fh[fd].node);
 
     mutex_unlock(&fat_mutex);
 
@@ -371,7 +351,7 @@ static dirent_t *fs_fat_readdir(void *h) {
     /* Check that the fd is valid */
     if(fd >= MAX_FAT_FILES || !fh[fd].used || !(fh[fd].mode & O_DIR)) {
         mutex_unlock(&fat_mutex);
-        errno = EINVAL;
+        errno = EBADF;
         return NULL;
     }
 
@@ -425,7 +405,6 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
 	memset(cpy, 0, strlen(fn1) + strlen(mnt->fs->mount) + 1);
 	strcat(cpy, mnt->fs->mount);
 	strcat(cpy, fn1);
-	cpy[strlen(fn1) + strlen(mnt->fs->mount) + 1] = '\0';
 	
     /* No, you cannot move the root directory. */
     if(strcasecmp(cpy, mnt->fs->mount) == 0) {
@@ -489,7 +468,6 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
 	memset(cpy, 0, strlen(fn2) + strlen(mnt->fs->mount) + 1);
 	strcat(cpy, mnt->fs->mount);
 	strcat(cpy, fn2);
-	cpy[strlen(fn2) + strlen(mnt->fs->mount) + 1] = '\0';
 	
 	/* See if new filename already exists */
 	found = fat_search_by_path(mnt->fs, cpy);
@@ -503,7 +481,7 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
 			/* Make sure directory is empty besides "." and ".." */
 			if(get_next_entry(mnt->fs, found, NULL) != NULL)
 			{
-				errno = EEXIST;
+				errno = ENOTEMPTY;
 				delete_struct_entry(found);
 				mutex_unlock(&fat_mutex);
 				return -1;
@@ -520,7 +498,7 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
 			/* So it is an empty directory and old name was a directory too. Work your magic */
 			delete_cluster_list(mnt->fs, found);
 			found->StartCluster = start_cluster;
-			update_fat_entry(mnt->fs, found);
+			update_sd_entry(mnt->fs, found);
 			
 			delete_struct_entry(found);
 			
@@ -533,7 +511,7 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
 			delete_cluster_list(mnt->fs, found);
 			found->StartCluster = start_cluster;
 			found->FileSize = filesize;
-			update_fat_entry(mnt->fs, found);
+			update_sd_entry(mnt->fs, found);
 			
 			delete_struct_entry(found);
 			
@@ -553,18 +531,17 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
 	{
 		delete_cluster_list(mnt->fs, found);
 		found->StartCluster = start_cluster;
-		update_fat_entry(mnt->fs, found);
+		update_sd_entry(mnt->fs, found);
 	}
 	else
 	{
 		found->StartCluster = start_cluster;
 		found->FileSize = filesize;
-		update_fat_entry(mnt->fs, found);
+		update_sd_entry(mnt->fs, found);
 	}
 	
 	free(cpy);
 	delete_struct_entry(found);
-
     mutex_unlock(&fat_mutex);
 	
     return 0;
@@ -579,7 +556,6 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 
 	ufn = malloc(strlen(fn)+strlen(mnt->fs->mount)+1); 
 	memset(ufn, 0, strlen(fn)+strlen(mnt->fs->mount)+1);    
-
     strcat(ufn, mnt->fs->mount);
     strcat(ufn, fn);
 
@@ -626,7 +602,7 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 		/* Free Data Clusters in FAT table */
 		delete_cluster_list(mnt->fs, f);
 
-		/* Remove it from directory tree */
+		/* Free node */
 		delete_struct_entry(f);
     }
 	else /* Not found */
@@ -649,7 +625,6 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
 
 	ufn = malloc(strlen(fn)+strlen(mnt->fs->mount)+1); 
     memset(ufn, 0, strlen(fn)+strlen(mnt->fs->mount)+1);    
-
     strcat(ufn, mnt->fs->mount);
     strcat(ufn, fn);
 
@@ -681,6 +656,7 @@ static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
  
     if(found == NULL)
 	{
+		errno = ENOSPC;
 		free(ufn);
 		return -1;
 	}
@@ -700,7 +676,6 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 	
 	ufn = malloc(strlen(fn)+strlen(mnt->fs->mount)+1); 
 	memset(ufn, 0, strlen(fn)+strlen(mnt->fs->mount)+1);    
-
     strcat(ufn, mnt->fs->mount);
     strcat(ufn, fn);
 
@@ -755,7 +730,7 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 		/* Free Data Clusters in FAT table */
 		delete_cluster_list(mnt->fs, f);
 
-		/* Remove it from directory tree */
+		/* Free node */
 		delete_struct_entry(f);
     }
 	else /* Not found */
@@ -827,7 +802,7 @@ static vfs_handler_t vh = {
     fs_fat_readdir,            /* readdir */
     NULL,                      /* ioctl */
     fs_fat_rename,             /* rename */
-    fs_fat_unlink,             /* unlink(delete a file) */
+    fs_fat_unlink,             /* unlink */
     NULL,                      /* mmap */
     NULL,                      /* complete */
     NULL,                      /* stat */

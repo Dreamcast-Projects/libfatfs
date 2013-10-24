@@ -89,9 +89,6 @@ int fat_read_data(fatfs_t *fat, node_entry_t *file, unsigned char **buf, int cou
 		/* Calculate Sector Location from cluster and sector we want to read */
 		sector_loc = fat->data_sec_loc + ((node - 2) * fat->boot_sector.sectors_per_cluster) + (numOfSector - (clusterNodeNum * fat->boot_sector.sectors_per_cluster)); 
 
-		/* Clear out before reading into */
-		memset(sector, 0, 512*sizeof(unsigned char));
-
 		/* Read 1 sector */
 		if(fat->dev->read_blocks(fat->dev, sector_loc, 1, sector) != 0)
 		{
@@ -133,10 +130,8 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 	unsigned char *buf = bbuf;
 	const int bytes_per_sector = fat->boot_sector.bytes_per_sector;
 	unsigned int node; 
+	
 	unsigned char *sector = malloc(512*sizeof(unsigned char)); /* Each sector is 512 bytes long */
-
-	/* Clear */
-	memset(sector, 0, 512*sizeof(unsigned char));
 
 	/* While we still have more to write, do it */
 	while(cnt)
@@ -150,6 +145,7 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 		/* Set to first cluster */
 		node = file->StartCluster; 
 		
+		/* This file has no clusters allocated to it, allocate one */
 		if(node == 0)
 		{
 			file->StartCluster = allocate_cluster(fat, 0);
@@ -183,9 +179,6 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 
 		/* Calculate Sector Location from cluster and sector we want to read and then write to */
 		sector_loc = fat->data_sec_loc + ((node - 2) * fat->boot_sector.sectors_per_cluster) + (numOfSector - (clusterNodeNum * fat->boot_sector.sectors_per_cluster)); 
-
-		/* Clear out before reading into */
-		memset(sector, 0, 512*sizeof(unsigned char));
 		
 		/* Read 1 sector */
 		if(fat->dev->read_blocks(fat->dev, sector_loc, 1, sector) != 0)
@@ -225,7 +218,7 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 	return 0;
 }
 
-void update_fat_entry(fatfs_t *fat, node_entry_t *file)
+void update_sd_entry(fatfs_t *fat, node_entry_t *file)
 {	
 	short clusthi = 0;
 	short clustlo = 0;
@@ -237,18 +230,16 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	struct tm * timeinfo;
 
 	time (&rawtime);
-	timeinfo = localtime (&rawtime);
+	timeinfo = localtime(&rawtime);
 	
 	tme = generate_time(timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec/2);
 	date = generate_date(1900 + timeinfo->tm_year, timeinfo->tm_mon+1, timeinfo->tm_mday);
-	
-	memset(sector, 0, 512*sizeof(unsigned char));
 	
 	/* Read sector */
 	if(fat->dev->read_blocks(fat->dev, file->Location[0], 1, sector) != 0)
 	{
 #ifdef FATFS_DEBUG
-		printf("update_fat_entry(dir_entry.c): Couldn't read the sector %d\n", file->Location[0]);
+		printf("update_sd_entry(dir_entry.c): Couldn't read the sector %d\n", file->Location[0]);
 #endif
 		return;
 	}
@@ -268,7 +259,7 @@ void update_fat_entry(fatfs_t *fat, node_entry_t *file)
 	if(fat->dev->write_blocks(fat->dev, file->Location[0], 1, sector) != 0)
 	{
 #ifdef FATFS_DEBUG
-		printf("update_fat_entry(dir_entry.c): Couldn't write the sector %d\n", file->Location[0]);
+		printf("update_sd_entry(dir_entry.c): Couldn't write the sector %d\n", file->Location[0]);
 #endif
 		return;
 	}
@@ -290,14 +281,14 @@ void delete_struct_entry(node_entry_t * node)
 
 unsigned int allocate_cluster(fatfs_t *fat, unsigned int end_clust)
 {
-    static unsigned int fat_index = 2;
+    unsigned int fat_index = fat->next_free_fat_index;
 	
 	unsigned int i;
 	unsigned int cap = fat_index;
 	unsigned int marker = (fat->fat_type == FAT16) ? 0xFFFF : 0x0FFFFFFF;
     unsigned int cluster_num = 0;
 
-    /* Search for a free cluster. */
+    /* Search for a free cluster starting at index 2 or the last index where we found a free cluster(makes future calls faster) */
     while(fat_index < fat->boot_sector.bytes_per_sector*fat->table_size) { /* Go through Table one index at a time */
 	
 		cluster_num = read_fat_table_value(fat, fat_index*fat->byte_offset);
@@ -313,13 +304,18 @@ unsigned int allocate_cluster(fatfs_t *fat, unsigned int end_clust)
 				write_fat_table_value(fat, end_clust*fat->byte_offset, fat_index);  /* Change the table to indicate an allocated cluster */
 			}
 			write_fat_table_value(fat, fat_index*fat->byte_offset, marker);     /* Put the marker(0xFFFF or 0x0FFFFFFF) at the allocated cluster index */
-            
+			
+			fat->next_free_fat_index = fat_index; /* Save this index for next time */
+			
+			set_fsinfo_nextfree(fat); /* Write it to FSInfo sector */
+			
             return fat_index;
         }
       
         fat_index++;
     }
 	
+	/* In case we did not find one above and started from a fat_index that was not 2 */
 	for(i = 2;i < cap; i++)
 	{
 		cluster_num = read_fat_table_value(fat, i*fat->byte_offset);
@@ -336,6 +332,10 @@ unsigned int allocate_cluster(fatfs_t *fat, unsigned int end_clust)
 			}
 			write_fat_table_value(fat, i*fat->byte_offset, marker);     /* Put the marker(0xFFFF or 0x0FFFFFFF) at the allocated cluster index */
             
+			fat->next_free_fat_index = i; /* Save this index for next time */
+			
+			set_fsinfo_nextfree(fat); /* Write it to FSInfo sector */
+			
             return i;
         }
 	}
