@@ -13,7 +13,7 @@
 unsigned char * extract_long_name(fat_lfn_entry_t *lfn) 
 {
 	int i;
-
+	
 	unsigned char temp[2];
 	unsigned char buf[14];
 	unsigned char *final = NULL;
@@ -61,7 +61,6 @@ int fat_read_data(fatfs_t *fat, node_entry_t *file, unsigned char **buf, int cou
 	int sector_loc = 0;  
 	int numToRead = 0;
 	const int bytes_per_sector = fat->boot_sector.bytes_per_sector;
-	unsigned int node;
 	 
 	unsigned char *sector = malloc(512*sizeof(unsigned char)); /* Each sector is 512 bytes long */
 
@@ -77,17 +76,33 @@ int fat_read_data(fatfs_t *fat, node_entry_t *file, unsigned char **buf, int cou
 		/* Figure out which cluster we are reading from */
 		clusterNodeNum = numOfSector / fat->boot_sector.sectors_per_cluster;
 
-		/* Set to first cluster */
-		node = file->StartCluster; 
-
-		/* Advance to the cluster we want to read from. */
-		for(i = 0; i < clusterNodeNum; i++) 
+		/* If new cluster is needed, get it */
+		if(file->NumCluster != clusterNodeNum)
 		{
-			node = read_fat_table_value(fat, node*fat->byte_offset);
+			if((file->NumCluster+1) == clusterNodeNum) /* If its just the next cluster, only have to read fat table once */
+			{
+				file->CurrCluster = read_fat_table_value(fat, file->CurrCluster*fat->byte_offset);
+				file->NumCluster++;
+			}
+			else /* Its not the next cluster, find it starting from the beginning */
+			{
+				printf("Read - Something inefficient is going on\n");
+			
+				/* Set to first cluster */
+				file->CurrCluster = file->StartCluster; 
+		
+				/* Advance to the cluster we want to read from. */
+				for(i = 0; i < clusterNodeNum; i++) 
+				{
+					file->CurrCluster = read_fat_table_value(fat, file->CurrCluster*fat->byte_offset);
+				}
+				
+				file->NumCluster = clusterNodeNum;
+			}
 		}
 
 		/* Calculate Sector Location from cluster and sector we want to read */
-		sector_loc = fat->data_sec_loc + ((node - 2) * fat->boot_sector.sectors_per_cluster) + (numOfSector - (clusterNodeNum * fat->boot_sector.sectors_per_cluster)); 
+		sector_loc = fat->data_sec_loc + ((file->CurrCluster - 2) * fat->boot_sector.sectors_per_cluster) + (numOfSector - (clusterNodeNum * fat->boot_sector.sectors_per_cluster)); 
 
 		/* Read 1 sector */
 		if(fat->dev->read_blocks(fat->dev, sector_loc, 1, sector) != 0)
@@ -129,9 +144,8 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 	int numToWrite = 0;
 	unsigned char *buf = bbuf;
 	const int bytes_per_sector = fat->boot_sector.bytes_per_sector;
-	unsigned int node; 
 	
-	unsigned char *sector = malloc(512*sizeof(unsigned char)); /* Each sector is 512 bytes long */
+	unsigned char *sector = malloc(512*sizeof(unsigned char)); /* Each sector is 512 bytes long */ 
 
 	/* While we still have more to write, do it */
 	while(cnt)
@@ -141,44 +155,76 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 
 		/* Figure out which cluster we are writing to */
 		clusterNodeNum = numOfSector / fat->boot_sector.sectors_per_cluster;
-
-		/* Set to first cluster */
-		node = file->StartCluster; 
 		
 		/* This file has no clusters allocated to it, allocate one */
-		if(node == 0)
+		if(file->CurrCluster == 0)
 		{
 			file->StartCluster = allocate_cluster(fat, 0);
 			file->EndCluster = file->StartCluster;
-			node = file->StartCluster; 
+			file->CurrCluster = file->StartCluster;
+			file->NumCluster = 0;
 		}
 		else
 		{
-			/* Advance to the cluster we want to write to */
-			for(i = 0; i < clusterNodeNum; i++) 
+			/* If new cluster is needed, get it */
+			if(file->NumCluster != clusterNodeNum)
 			{
-				/* Grab the next cluster */
-				node = read_fat_table_value(fat, node*fat->byte_offset);
-				
-				/* Check if the next cluster exists. If it doesn't then allocate another cluster for this file and break */
-				if((node >= 0xFFF8 && fat->fat_type == FAT16)
-				|| (node >= 0xFFFFFF8 && fat->fat_type == FAT32))
+				if((file->NumCluster+1) == clusterNodeNum) /* If its just the next cluster, only have to read fat table once */
 				{
-					if((node = allocate_cluster(fat, file->EndCluster)) == 0)
+					file->CurrCluster = read_fat_table_value(fat, file->CurrCluster*fat->byte_offset);
+					
+					/* Check if the next cluster exists. If it doesn't then allocate another cluster for this file and break */
+					if((fat->fat_type == FAT16 && file->CurrCluster >= 0xFFF8)
+					|| (fat->fat_type == FAT32 && file->CurrCluster >= 0xFFFFFF8))
 					{
+						if((file->CurrCluster = allocate_cluster(fat, file->EndCluster)) == 0)
+						{
 #ifdef FATFS_DEBUG
-						printf("fat_write_data(dir_entry.c): All out of clusters to Allocate\n");
+							printf("fat_write_data(dir_entry.c): All out of clusters to Allocate\n");
 #endif
-						return -1;
+							return -1;
+						}
+						file->EndCluster = file->CurrCluster;
 					}
-					file->EndCluster = node;
-					break;
+					
+					file->NumCluster++;
+				}
+				else
+				{
+					printf("Write - Something inefficient is going on\n");
+				
+					/* Set to first cluster */
+					file->CurrCluster = file->StartCluster; 
+			
+					/* Advance to the cluster we want to write to */
+					for(i = 0; i < clusterNodeNum; i++) 
+					{
+						/* Grab the next cluster */
+						file->CurrCluster = read_fat_table_value(fat, file->CurrCluster*fat->byte_offset);
+						
+						/* Check if the next cluster exists. If it doesn't then allocate another cluster for this file and break */
+						if((file->CurrCluster >= 0xFFF8 && fat->fat_type == FAT16)
+						|| (file->CurrCluster >= 0xFFFFFF8 && fat->fat_type == FAT32))
+						{
+							if((file->CurrCluster = allocate_cluster(fat, file->EndCluster)) == 0)
+							{
+#ifdef FATFS_DEBUG
+								printf("fat_write_data(dir_entry.c): All out of clusters to Allocate\n");
+#endif
+								return -1;
+							}
+							file->EndCluster = file->CurrCluster;
+							break;
+						}
+					}
+					
+					file->NumCluster = clusterNodeNum;
 				}
 			}
 		}
 
 		/* Calculate Sector Location from cluster and sector we want to read and then write to */
-		sector_loc = fat->data_sec_loc + ((node - 2) * fat->boot_sector.sectors_per_cluster) + (numOfSector - (clusterNodeNum * fat->boot_sector.sectors_per_cluster)); 
+		sector_loc = fat->data_sec_loc + ((file->CurrCluster - 2) * fat->boot_sector.sectors_per_cluster) + (numOfSector - (clusterNodeNum * fat->boot_sector.sectors_per_cluster)); 
 		
 		/* Read 1 sector */
 		if(fat->dev->read_blocks(fat->dev, sector_loc, 1, sector) != 0)
@@ -551,7 +597,7 @@ node_entry_t *fat_search_by_path(fatfs_t *fat, const char *fn)
 	temp->Name = (unsigned char *)remove_all_chars(fat->mount, '/');          /*  */
 	temp->ShortName = (unsigned char *)remove_all_chars(fat->mount, '/');
 	temp->Attr = DIRECTORY;           /* Root directory is obviously a directory */
-	temp->StartCluster = cluster;    /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
+	temp->StartCluster = cluster;     /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
 	temp->EndCluster = end_cluster(fat, temp->StartCluster);
 	
 	rv = temp;
@@ -573,6 +619,7 @@ node_entry_t *fat_search_by_path(fatfs_t *fat, const char *fn)
 #ifdef FATFS_DEBUG
 				printf("Couldnt find %s\n",pch);
 #endif
+				delete_struct_entry(temp);
 				free(ufn);
 				return NULL;
 			}
@@ -580,6 +627,7 @@ node_entry_t *fat_search_by_path(fatfs_t *fat, const char *fn)
 	}
 	
 	free(ufn);
+	
 	return rv;
 }
 

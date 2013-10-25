@@ -119,7 +119,7 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 		rv->data_sec_loc = rv->root_dir_sec_loc + rv->root_dir_sectors_num;
 		
 		/* Makes sure we already have something useful in the FAT table cache */
-		read_fat_table_value(rv, 4*rv->next_free_fat_index); 
+		read_fat_table_value(rv, 4*rv->root_cluster_num); /* 4 = byte_offset */
 	}
 	
 	if(rv->boot_sector.total_sectors_16 != 0) {

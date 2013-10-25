@@ -117,8 +117,11 @@ struct node_entry {
 	unsigned char Attr;                /* Holds the attributes of entry */
 	unsigned int FileSize;             /* Holds the size of the file */
 	unsigned int Location[2];          /* Location in FAT Table. Location[0]: Sector, Location[1]: Byte in that sector */
-	unsigned int StartCluster;
-	unsigned int EndCluster;
+	unsigned int StartCluster;		   /* First cluster that belongs to this file/folder */
+	unsigned int EndCluster;		   /* The last cluster that belongs to this file/folder */
+	
+	unsigned int CurrCluster;          /* The current cluster that is being used by read/write (files only) */
+	unsigned int NumCluster;           /* The number(space/spot) of the cluster	if a file had an array of cluster numbers */
 };
 
 /* Prototypes */

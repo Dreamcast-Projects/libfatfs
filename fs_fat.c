@@ -146,6 +146,8 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     fh[fd].ptr = 0;
     fh[fd].mnt = mnt;
     fh[fd].node = found;
+	fh[fd].node->CurrCluster = fh[fd].node->StartCluster;
+	fh[fd].node->NumCluster = 0;
     fh[fd].dir = NULL;
 
     mutex_unlock(&fat_mutex);
@@ -271,6 +273,10 @@ static _off64_t fs_fat_seek64(void *h, _off64_t offset, int whence) {
     file_t fd = ((file_t)h) - 1;
     _off64_t rv;
 	
+	int i;
+	int numOfSector = 0;
+	int clusterNodeNum = 0;
+	
     mutex_lock(&fat_mutex);
 
     /* Check that the fd is valid */
@@ -291,7 +297,7 @@ static _off64_t fs_fat_seek64(void *h, _off64_t offset, int whence) {
             break;
 
         case SEEK_END:
-            fh[fd].ptr = fh[fd].node->FileSize + offset;
+            fh[fd].ptr = fh[fd].node->FileSize;// + offset;
             break;
 
         default:
@@ -299,6 +305,22 @@ static _off64_t fs_fat_seek64(void *h, _off64_t offset, int whence) {
 	    errno = EINVAL;
             return -1;
     }
+	
+	/* Get the number of the sector in the cluster we want to write to */
+	numOfSector = fh[fd].ptr / fh[fd].mnt->fs->boot_sector.bytes_per_sector;
+
+	/* Figure out which cluster we are writing to */
+	clusterNodeNum = numOfSector / fh[fd].mnt->fs->boot_sector.sectors_per_cluster;
+	
+	fh[fd].node->CurrCluster = fh[fd].node->StartCluster;
+	
+	/* Advance to the cluster we want to read from/ write to. */
+	for(i = 0; i < clusterNodeNum; i++) 
+	{
+		fh[fd].node->CurrCluster = read_fat_table_value(fh[fd].mnt->fs, fh[fd].node->CurrCluster*fh[fd].mnt->fs->byte_offset);
+	}
+	
+	fh[fd].node->NumCluster = clusterNodeNum;
 
     rv =  (_off64_t)fh[fd].ptr;
     mutex_unlock(&fat_mutex);
@@ -883,7 +905,7 @@ int fs_fat_mount(const char *mp, kos_blockdev_t *dev, uint32_t flags) {
 
 int fs_fat_unmount(const char *mp) {
     fs_fat_fs_t *i;
-	int j;
+	//int j;
     int found = 0, rv = 0;
 
     /* Find the fs in question */
@@ -901,6 +923,7 @@ int fs_fat_unmount(const char *mp) {
 		free(i->fs->mount); /* Free str mem */
 		
 		/* Handle dealloc all the open files */
+		/*
 		for(j=0;j<MAX_FAT_FILES; j++)
 		{
 			if(fh[j].used == 1)
@@ -913,6 +936,7 @@ int fs_fat_unmount(const char *mp) {
 				delete_struct_entry(fh[j].dir);
 			}
 		}
+		*/
 
         LIST_REMOVE(i, entry);
 
