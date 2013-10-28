@@ -786,7 +786,6 @@ node_entry_t *search_directory(fatfs_t *fat, node_entry_t *node, const char *fn)
 	/* If the directory is the root directory and if fat->fat_type = FAT16 consider it a special case */
 	if(fat->fat_type == FAT16 && strcasecmp(node->Name, fat->mount) == 0) /* Go through special(static number) sectors. No clusters. */
 	{
-		printf("Going through special sectors\n");
 		for(i = 0; i < fat->root_dir_sectors_num; i++) {
 		
 			sector_loc = fat->root_dir_sec_loc + i;
@@ -802,7 +801,6 @@ node_entry_t *search_directory(fatfs_t *fat, node_entry_t *node, const char *fn)
 	}
 	else /* Go through clusters/sectors */
 	{
-		printf("Through cluster :(\n");
 		while((fat->fat_type == FAT16 && clust < 0xFFF8)
 		   || (fat->fat_type == FAT32 && clust < 0xFFFFFF8))
 		{
