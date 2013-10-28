@@ -162,14 +162,16 @@ static int fs_fat_close(void * h) {
 	
     mutex_lock(&fat_mutex);
 
-    if(fd < MAX_FAT_FILES && fh[fd].mode) {
+    if(fd < MAX_FAT_FILES && fh[fd].used) {
         fh[fd].used = 0;
         fh[fd].ptr = 0;
 		fh[fd].mode = 0;
+		
+		delete_struct_entry(fh[fd].node);
+		fh[fd].node = NULL;
+		delete_struct_entry(fh[fd].dir);
+		fh[fd].dir = NULL;
     }
-	
-	delete_struct_entry(fh[fd].node);
-	delete_struct_entry(fh[fd].dir);
 
     mutex_unlock(&fat_mutex);
 
@@ -227,6 +229,8 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
     file_t fd = ((file_t)h) - 1;
     fatfs_t *fs;
     ssize_t rv;
+	
+	unsigned int last_end;
 
     mutex_lock(&fat_mutex);
 
@@ -251,6 +255,7 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
 	
 	fs = fh[fd].mnt->fs;
     rv = (ssize_t)cnt;
+	last_end = fh[fd].node->EndCluster; /* Used later to determine if a cluster was allocated for this file */
 	
     if(fat_write_data(fs, fh[fd].node, (unsigned char*)buf, cnt, fh[fd].ptr) != 0) {
         mutex_unlock(&fat_mutex);
@@ -259,8 +264,13 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
     }
 
     fh[fd].ptr += cnt;
-    fh[fd].node->FileSize = (fh[fd].ptr > fh[fd].node->FileSize) ? fh[fd].ptr : fh[fd].node->FileSize; /* Increase the file size if need be(which ever is bigger) */
+	
+	/* Write it to FSInfo sector(Fat32 only) */
+	if(fs->fat_type == FAT32 && (fh[fd].node->EndCluster != last_end))
+		set_fsinfo_nextfree(fs); 
 
+    fh[fd].node->FileSize = (fh[fd].ptr > fh[fd].node->FileSize) ? fh[fd].ptr : fh[fd].node->FileSize; /* Increase the file size if need be(which ever is bigger) */
+				
     /* Write it to the FAT */
     update_sd_entry(fs, fh[fd].node);
 
@@ -272,10 +282,6 @@ static ssize_t fs_fat_write(void *h, const void *buf, size_t cnt)
 static _off64_t fs_fat_seek64(void *h, _off64_t offset, int whence) {
     file_t fd = ((file_t)h) - 1;
     _off64_t rv;
-	
-	int i;
-	int numOfSector = 0;
-	int clusterNodeNum = 0;
 	
     mutex_lock(&fat_mutex);
 
@@ -305,22 +311,6 @@ static _off64_t fs_fat_seek64(void *h, _off64_t offset, int whence) {
 	    errno = EINVAL;
             return -1;
     }
-	
-	/* Get the number of the sector in the cluster we want to write to */
-	numOfSector = fh[fd].ptr / fh[fd].mnt->fs->boot_sector.bytes_per_sector;
-
-	/* Figure out which cluster we are writing to */
-	clusterNodeNum = numOfSector / fh[fd].mnt->fs->boot_sector.sectors_per_cluster;
-	
-	fh[fd].node->CurrCluster = fh[fd].node->StartCluster;
-	
-	/* Advance to the cluster we want to read from/ write to. */
-	for(i = 0; i < clusterNodeNum; i++) 
-	{
-		fh[fd].node->CurrCluster = read_fat_table_value(fh[fd].mnt->fs, fh[fd].node->CurrCluster*fh[fd].mnt->fs->byte_offset);
-	}
-	
-	fh[fd].node->NumCluster = clusterNodeNum;
 
     rv =  (_off64_t)fh[fd].ptr;
     mutex_unlock(&fat_mutex);
@@ -377,7 +367,7 @@ static dirent_t *fs_fat_readdir(void *h) {
         return NULL;
     }
 
-    /* Get the children of this folder if NULL */
+    /* Get the first child of this folder if NULL */
     if(fh[fd].dir == NULL) 
     {
 		fh[fd].dir = get_next_entry(fh[fd].mnt->fs, fh[fd].node, NULL);
@@ -529,6 +519,14 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
 		}
 		else 
 		{
+			if(attr != found->Attr)
+			{
+				errno = EISDIR;
+				delete_struct_entry(found);
+				mutex_unlock(&fat_mutex);
+				return -1;
+			}
+			
 			/* Its a file that already exists. Delete its clusters and point it to the old clusters */
 			delete_cluster_list(mnt->fs, found);
 			found->StartCluster = start_cluster;
@@ -905,7 +903,7 @@ int fs_fat_mount(const char *mp, kos_blockdev_t *dev, uint32_t flags) {
 
 int fs_fat_unmount(const char *mp) {
     fs_fat_fs_t *i;
-	//int j;
+	int j;
     int found = 0, rv = 0;
 
     /* Find the fs in question */
@@ -923,7 +921,6 @@ int fs_fat_unmount(const char *mp) {
 		free(i->fs->mount); /* Free str mem */
 		
 		/* Handle dealloc all the open files */
-		/*
 		for(j=0;j<MAX_FAT_FILES; j++)
 		{
 			if(fh[j].used == 1)
@@ -933,11 +930,12 @@ int fs_fat_unmount(const char *mp) {
 				fh[j].mode = 0;
 
 				delete_struct_entry(fh[j].node);
+				fh[j].node = NULL;
 				delete_struct_entry(fh[j].dir);
+				fh[j].dir = NULL;
 			}
 		}
-		*/
-
+		
         LIST_REMOVE(i, entry);
 
         /* XXXX: We should probably do something with open files... */

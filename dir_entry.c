@@ -86,7 +86,6 @@ int fat_read_data(fatfs_t *fat, node_entry_t *file, unsigned char **buf, int cou
 			}
 			else /* Its not the next cluster, find it starting from the beginning */
 			{
-				printf("Read - Something inefficient is going on\n");
 			
 				/* Set to first cluster */
 				file->CurrCluster = file->StartCluster; 
@@ -191,7 +190,6 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 				}
 				else
 				{
-					printf("Write - Something inefficient is going on\n");
 				
 					/* Set to first cluster */
 					file->CurrCluster = file->StartCluster; 
@@ -203,8 +201,8 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 						file->CurrCluster = read_fat_table_value(fat, file->CurrCluster*fat->byte_offset);
 						
 						/* Check if the next cluster exists. If it doesn't then allocate another cluster for this file and break */
-						if((file->CurrCluster >= 0xFFF8 && fat->fat_type == FAT16)
-						|| (file->CurrCluster >= 0xFFFFFF8 && fat->fat_type == FAT32))
+						if((fat->fat_type == FAT16 && file->CurrCluster >= 0xFFF8)
+						|| (fat->fat_type == FAT32 && file->CurrCluster >= 0xFFFFFF8))
 						{
 							if((file->CurrCluster = allocate_cluster(fat, file->EndCluster)) == 0)
 							{
@@ -329,7 +327,6 @@ unsigned int allocate_cluster(fatfs_t *fat, unsigned int end_clust)
 {
     unsigned int fat_index = fat->next_free_fat_index;
 	
-	unsigned int i;
 	unsigned int cap = fat_index;
 	unsigned int marker = (fat->fat_type == FAT16) ? 0xFFFF : 0x0FFFFFFF;
     unsigned int cluster_num = 0;
@@ -353,9 +350,6 @@ unsigned int allocate_cluster(fatfs_t *fat, unsigned int end_clust)
 			
 			fat->next_free_fat_index = fat_index; /* Save this index for next time */
 			
-			if(fat->fat_type == FAT32)
-				set_fsinfo_nextfree(fat); /* Write it to FSInfo sector which only exists for Fat32 */
-			
             return fat_index;
         }
       
@@ -363,28 +357,25 @@ unsigned int allocate_cluster(fatfs_t *fat, unsigned int end_clust)
     }
 	
 	/* In case we did not find one above and started from a fat_index that was not 2 */
-	for(i = 2;i < cap; i++)
+	for(fat_index = 2;fat_index < cap; fat_index++)
 	{
-		cluster_num = read_fat_table_value(fat, i*fat->byte_offset);
+		cluster_num = read_fat_table_value(fat, fat_index*fat->byte_offset);
         
         /* If we found a free entry */
         if(cluster_num == 0x00) 
         {
 #ifdef FATFS_DEBUG
-            printf("allocate_cluster(dir_entry.c): Found a free cluster entry -- Index: %d\n", i); 
+            printf("allocate_cluster(dir_entry.c): Found a free cluster entry -- Index: %d\n", fat_index); 
 #endif
             if(end_clust != 0) /* Cant change what doesnt exist */
             {
-				write_fat_table_value(fat, end_clust*fat->byte_offset, i);  /* Change the table to indicate an allocated cluster */
+				write_fat_table_value(fat, end_clust*fat->byte_offset, fat_index);  /* Change the table to indicate an allocated cluster */
 			}
-			write_fat_table_value(fat, i*fat->byte_offset, marker);     /* Put the marker(0xFFFF or 0x0FFFFFFF) at the allocated cluster index */
+			write_fat_table_value(fat, fat_index*fat->byte_offset, marker);     /* Put the marker(0xFFFF or 0x0FFFFFFF) at the allocated cluster index */
             
-			fat->next_free_fat_index = i; /* Save this index for next time */
+			fat->next_free_fat_index = fat_index; /* Save this index for next time */
 			
-			if(fat->fat_type == FAT32)
-				set_fsinfo_nextfree(fat); /* Write it to FSInfo sector which only exists for Fat32 */
-			
-            return i;
+            return fat_index;
         }
 	}
 	
@@ -406,8 +397,8 @@ void delete_cluster_list(fatfs_t *fat, node_entry_t *f)
 	if(clust == 0)
 		return;
 	
-	while((clust < 0xFFF8 && fat->fat_type == FAT16)
-      || (clust < 0xFFFFFF8 && fat->fat_type == FAT32))
+	while((fat->fat_type == FAT16 && clust < 0xFFF8)
+      || (fat->fat_type == FAT32 && clust < 0xFFFFFF8))
 	{
 		value = read_fat_table_value(fat, clust*fat->byte_offset);
 		write_fat_table_value(fat, clust*fat->byte_offset, clear);
@@ -489,6 +480,10 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
 		newfile->StartCluster = allocate_cluster(fat, 0);
 		newfile->EndCluster = newfile->StartCluster;
 		clear_cluster(fat, newfile->StartCluster);
+		
+		if(fat->fat_type == FAT32)
+			set_fsinfo_nextfree(fat); /* Write it to FSInfo sector which only exists for Fat32 */
+			
 	}
 	
 	/* Make regular entry and write it to SD FAT */
@@ -499,6 +494,7 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
 	entry.Attr = newfile->Attr;
 	entry.Res = res;
 	entry.FileSize = 0;   /* For both new files and new folders */
+	
 	if(newfile->Attr & DIRECTORY) /* Folder */
 	{
 		entry.FstClusHI = newfile->StartCluster >> 16;
@@ -616,8 +612,9 @@ node_entry_t *fat_search_by_path(fatfs_t *fat, const char *fn)
 			}
 			else 
 			{
+				
 #ifdef FATFS_DEBUG
-				printf("Couldnt find %s\n",pch);
+				printf("Couldnt find \"%s\" in \"%s\"\n", pch, temp->Name);
 #endif
 				delete_struct_entry(temp);
 				free(ufn);
@@ -789,7 +786,7 @@ node_entry_t *search_directory(fatfs_t *fat, node_entry_t *node, const char *fn)
 	node_entry_t    *rv = NULL;
 
 	/* If the directory is the root directory and if fat->fat_type = FAT16 consider it a special case */
-	if(strcasecmp(node->Name, fat->mount) == 0 && fat->fat_type == FAT16) /* Go through special(static number) sectors. No clusters. */
+	if(fat->fat_type == FAT16 && strcasecmp(node->Name, fat->mount) == 0) /* Go through special(static number) sectors. No clusters. */
 	{
 		for(i = 0; i < fat->root_dir_sectors_num; i++) {
 		
@@ -806,8 +803,8 @@ node_entry_t *search_directory(fatfs_t *fat, node_entry_t *node, const char *fn)
 	}
 	else /* Go through clusters/sectors */
 	{
-		while((clust < 0xFFF8 && fat->fat_type == FAT16)
-		   || (clust < 0xFFFFFF8 && fat->fat_type == FAT32))
+		while((fat->fat_type == FAT16 && clust < 0xFFF8)
+		   || (fat->fat_type == FAT32 && clust < 0xFFFFFF8))
 		{
 			/* Go through all the sectors in this cluster */
 			for(i = 0; i < fat->boot_sector.sectors_per_cluster; i++)
@@ -834,7 +831,7 @@ node_entry_t *search_directory(fatfs_t *fat, node_entry_t *node, const char *fn)
 /* If fn is NULL, then just grab the first entry encountered */
 node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int ptr, const char *fn)
 {
-	int j;
+	int j, k;
 	int var = ptr;
 	static int contin = 0;
 	unsigned char *str_temp;
@@ -865,7 +862,7 @@ node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int 
 	}
 	
 	for(j = var/32; j < 16; j++) /* How many entries per sector(32 byte entry x 16 = 512 bytes = 1 sector) */
-	{
+	{	
 		/* Entry does not exist if it has been deleted(0xE5) or is an empty entry(0) */
 		if((buf+var)[0] == DELETED || (buf+var)[0] == EMPTY) 
 		{ 
@@ -937,12 +934,12 @@ node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int 
 				
 				if(temp.Res & 0x08) /* If the filename is supposed to appear lowercase...make it so */
 				{	
-					j = 0;
+					k = 0;
 					
-					while(lfnbuf2[j])
+					while(lfnbuf2[k])
 					{
-						lfnbuf2[j] = tolower((int)lfnbuf2[j]);
-						j++;
+						lfnbuf2[k] = tolower((int)lfnbuf2[k]);
+						k++;
 					}
 				}
 				
@@ -959,12 +956,12 @@ node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int 
 						
 						if(temp.Res & 0x10) /* If the extension is supposed to appear lowercase...make it so */
 						{	
-							j = strlen(temp.FileName) + 1; /* + 1 for period */
+							k = strlen(temp.FileName) + 1; /* + 1 for period */
 							
-							while(lfnbuf2[j])
+							while(lfnbuf2[k])
 							{
-								lfnbuf2[j] = tolower((int)lfnbuf2[j]);
-								j++;
+								lfnbuf2[k] = tolower((int)lfnbuf2[k]);
+								k++;
 							}
 						}
 					}
@@ -1008,8 +1005,6 @@ node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int 
 						strcat(lfnbuf2, temp.Ext);
 					}
 				}
-				
-				lfnbuf2[strlen(temp.FileName) + 1 + strlen(temp.Ext)] = '\0';
 				
 				if(fn == NULL || strcasecmp(lfnbuf1, fn) == 0 || strcasecmp(lfnbuf2, fn) == 0) 
 				{
@@ -1102,7 +1097,7 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 		{
 			sector_loc = fat->data_sec_loc + ((clust - 2) * fat->boot_sector.sectors_per_cluster);
 		}
-		else if(strcasecmp(dir->Name, fat->mount) == 0 && fat->fat_type == FAT16) /* Fat16 Root Directory */
+		else if(fat->fat_type == FAT16 && strcasecmp(dir->Name, fat->mount) == 0) /* Fat16 Root Directory */
 		{
 			sector_loc = fat->root_dir_sec_loc;
 		}
@@ -1124,8 +1119,8 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 		if(clust != 0)
 		{	
 			/* Determine cluster(based on sector) */
-			while((clust < 0xFFF8 && fat->fat_type == FAT16)
-			   || (clust < 0xFFFFFF8 && fat->fat_type == FAT32))
+			while((fat->fat_type == FAT16 && clust < 0xFFF8)
+			   || (fat->fat_type == FAT32 && clust < 0xFFFFFF8))
 			{
 				clust_sector_loc = fat->data_sec_loc + ((clust - 2) * fat->boot_sector.sectors_per_cluster);
 				
@@ -1147,8 +1142,8 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 			sector_loc += 1;
 		}
 		
-		if((clust < 0xFFF8 && fat->fat_type == FAT16)
-	    || (clust < 0xFFFFFF8 && fat->fat_type == FAT32))
+		if((fat->fat_type == FAT16 && clust < 0xFFF8)
+	    || (fat->fat_type == FAT32 && clust < 0xFFFFFF8))
 		{
 			clust_sector_loc = fat->data_sec_loc + ((clust - 2) * fat->boot_sector.sectors_per_cluster);
 				
@@ -1156,8 +1151,8 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 			{
 				clust = read_fat_table_value(fat, clust*fat->byte_offset);
 				
-				if((clust < 0xFFF8 && fat->fat_type == FAT16)
-				|| (clust < 0xFFFFFF8 && fat->fat_type == FAT32))
+				if((fat->fat_type == FAT16 && clust < 0xFFF8)
+				|| (fat->fat_type == FAT32 && clust < 0xFFFFFF8))
 				{
 					sector_loc = fat->data_sec_loc + ((clust - 2) * fat->boot_sector.sectors_per_cluster);
 				}
@@ -1168,7 +1163,7 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 				}
 			}
 		}
-		else if(strcasecmp(dir->Name, fat->mount) == 0 && fat->fat_type == FAT16) /* Fat16 Root Directory */
+		else if(fat->fat_type == FAT16 && strcasecmp(dir->Name, fat->mount) == 0) /* Fat16 Root Directory */
 		{
 			if(sector_loc >= (fat->root_dir_sec_loc + fat->root_dir_sectors_num))
 				return NULL;
@@ -1181,7 +1176,7 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 	}
 	
 	/* If the directory is the root directory and if fat->fat_type = FAT16 consider it a special case */
-	if(strcasecmp(dir->Name, fat->mount) == 0 && clust == 0 && fat->fat_type == FAT16) /* Go through special(static number) sectors. No clusters. */
+	if(fat->fat_type == FAT16 && strcasecmp(dir->Name, fat->mount) == 0) /* Go through special(static number) sectors. No clusters. */
 	{
 		for(i = (sector_loc - fat->root_dir_sec_loc); i < fat->root_dir_sectors_num; i++) 
 		{
@@ -1199,8 +1194,8 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 	}
 	else /* Go through clusters/sectors */
 	{
-		while((clust < 0xFFF8 && fat->fat_type == FAT16)
-		   || (clust < 0xFFFFFF8 && fat->fat_type == FAT32))
+		while((fat->fat_type == FAT16 && clust < 0xFFF8)
+		   || (fat->fat_type == FAT32 && clust < 0xFFFFFF8))
 		{
 			clust_sector_loc = fat->data_sec_loc + ((clust - 2) * fat->boot_sector.sectors_per_cluster);
 			
@@ -1224,8 +1219,8 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 			
 			ptr = 0;
 			
-			if((clust < 0xFFF8 && fat->fat_type == FAT16)
-		    || (clust < 0xFFFFFF8 && fat->fat_type == FAT32))
+			if((fat->fat_type == FAT16 && clust < 0xFFF8)
+		    || (fat->fat_type == FAT32 && clust < 0xFFFFFF8))
 			{
 				sector_loc = fat->data_sec_loc + ((clust - 2) * fat->boot_sector.sectors_per_cluster);
 			}

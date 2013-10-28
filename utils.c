@@ -656,7 +656,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 #endif
 	
 	/* Dealing with root directory (FAT16 only) */
-	if(cur_cluster == 0 && fat->fat_type == FAT16)  /* Fat16 root directory has a constant amount of memory to build entries while fat32's root directory uses clusters(expandable) */
+	if(fat->fat_type == FAT16 && cur_cluster == 0)  /* Fat16 root directory has a constant amount of memory to build entries while fat32's root directory uses clusters(expandable) */
 	{
 		for(i = 0; i < fat->root_dir_sectors_num; i++) {
 			
@@ -703,8 +703,8 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 	else
 	{
 		/* Go through each cluster that belongs to this folder */
-		while((cur_cluster < 0xFFF8 && fat->fat_type == FAT16)
-		   || (cur_cluster < 0xFFFFFF8 && fat->fat_type == FAT32)) 
+		while((fat->fat_type == FAT16 && cur_cluster < 0xFFF8)
+		   || (fat->fat_type == FAT32 && cur_cluster < 0xFFFFFF8)) 
 		{
 			/* Go through each sector in the cluster */
 			for(i = 0; i < fat->boot_sector.sectors_per_cluster; i++)
@@ -769,6 +769,9 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 		
 		clear_cluster(fat, cur_cluster);
 		
+		if(fat->fat_type == FAT32)
+			set_fsinfo_nextfree(fat); /* Write it to FSInfo sector which only exists for Fat32 */
+			
 		locations[0] = fat->data_sec_loc + ((cur_cluster - 2) * fat->boot_sector.sectors_per_cluster);   
 		locations[1] = 0;
 	}
@@ -850,8 +853,8 @@ unsigned int end_cluster(fatfs_t *fat, unsigned int start_cluster)
 	if(clust == 0)
 		return 0;
 	
-	while((clust < 0xFFF8 && fat->fat_type == FAT16)
-	   || (clust < 0xFFFFFF8 && fat->fat_type == FAT32))
+	while((fat->fat_type == FAT16 && clust < 0xFFF8)
+	   || (fat->fat_type == FAT32 && clust < 0xFFFFFF8))
 	{
 		value = clust;
 		clust = read_fat_table_value(fat, clust*fat->byte_offset);
