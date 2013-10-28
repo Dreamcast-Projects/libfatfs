@@ -86,7 +86,6 @@ int fat_read_data(fatfs_t *fat, node_entry_t *file, unsigned char **buf, int cou
 			}
 			else /* Its not the next cluster, find it starting from the beginning */
 			{
-			
 				/* Set to first cluster */
 				file->CurrCluster = file->StartCluster; 
 		
@@ -156,7 +155,7 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 		clusterNodeNum = numOfSector / fat->boot_sector.sectors_per_cluster;
 		
 		/* This file has no clusters allocated to it, allocate one */
-		if(file->CurrCluster == 0)
+		if(file->StartCluster == 0)
 		{
 			file->StartCluster = allocate_cluster(fat, 0);
 			file->EndCluster = file->StartCluster;
@@ -483,7 +482,6 @@ int generate_and_write_entry(fatfs_t *fat, char *entry_name, node_entry_t *newfi
 		
 		if(fat->fat_type == FAT32)
 			set_fsinfo_nextfree(fat); /* Write it to FSInfo sector which only exists for Fat32 */
-			
 	}
 	
 	/* Make regular entry and write it to SD FAT */
@@ -788,6 +786,7 @@ node_entry_t *search_directory(fatfs_t *fat, node_entry_t *node, const char *fn)
 	/* If the directory is the root directory and if fat->fat_type = FAT16 consider it a special case */
 	if(fat->fat_type == FAT16 && strcasecmp(node->Name, fat->mount) == 0) /* Go through special(static number) sectors. No clusters. */
 	{
+		printf("Going through special sectors\n");
 		for(i = 0; i < fat->root_dir_sectors_num; i++) {
 		
 			sector_loc = fat->root_dir_sec_loc + i;
@@ -803,6 +802,7 @@ node_entry_t *search_directory(fatfs_t *fat, node_entry_t *node, const char *fn)
 	}
 	else /* Go through clusters/sectors */
 	{
+		printf("Through cluster :(\n");
 		while((fat->fat_type == FAT16 && clust < 0xFFF8)
 		   || (fat->fat_type == FAT32 && clust < 0xFFFFFF8))
 		{

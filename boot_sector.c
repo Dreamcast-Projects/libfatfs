@@ -48,7 +48,7 @@ void fat_print_bootsector(const fat_BS_t* fat) {
 	printf("Hidden Sector Count: %d\n", fat->hidden_sector_count);
 	printf("Total Sectors 32: %d\n", fat->total_sectors_32);
 	
-	if(fat->total_sectors_16 == 0)
+	if(fat->table_size_16 == 0)
 	{
 		memset(&ext,0, sizeof(fat_extBS_32_t));
 		

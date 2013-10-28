@@ -656,7 +656,7 @@ int *get_free_locations(fatfs_t *fat, node_entry_t *curdir, int num_entries)
 #endif
 	
 	/* Dealing with root directory (FAT16 only) */
-	if(fat->fat_type == FAT16 && cur_cluster == 0)  /* Fat16 root directory has a constant amount of memory to build entries while fat32's root directory uses clusters(expandable) */
+	if(fat->fat_type == FAT16 && strcasecmp(curdir->Name, fat->mount) == 0)  /* Fat16 root directory has a constant amount of memory to build entries while fat32's root directory uses clusters(expandable) */
 	{
 		for(i = 0; i < fat->root_dir_sectors_num; i++) {
 			

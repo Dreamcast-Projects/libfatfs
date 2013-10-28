@@ -19,7 +19,7 @@ static unsigned char buffer[512];
 unsigned int read_fat_table_value(fatfs_t *fat, int byte_index) 
 {
 	short ptr_offset;
-	unsigned int read_value;
+	unsigned int read_value = 0;
 	
 	/* Check if we have to read a new sector */
 	if(sector_offset != (byte_index / fat->boot_sector.bytes_per_sector))
@@ -88,6 +88,11 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 
 	if(rv->boot_sector.table_size_16 > 0) /* Fat16 */
 	{
+
+#ifdef FATFS_DEBUG
+		printf("FAT16 formatted card detected\n");
+#endif
+	
 		rv->fat_type = FAT16;
 		rv->byte_offset = 2;
 		rv->root_cluster_num = 0; /* Not used. Set it to zero */
@@ -104,6 +109,11 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	}
 	else                                 /* Fat32 */
 	{
+	
+#ifdef FATFS_DEBUG
+		printf("FAT32 formatted card detected\n");
+#endif
+	
 		memset(&fat32_boot_ext, 0, sizeof(fat_extBS_32_t));
 		memcpy(&fat32_boot_ext, &(rv->boot_sector.extended_section), sizeof(fat_extBS_32_t));
 		
@@ -141,9 +151,7 @@ fatfs_t *fat_fs_init(const char *mp, kos_blockdev_t *bd) {
 	printf("Next free cluster: %d\n\n\n", rv->next_free_fat_index);
 #endif
 	
-	rv->mount = malloc(strlen(mp)+ 1);
-	strcpy(rv->mount, mp);
-	rv->mount[strlen(mp)] = '\0';
+	rv->mount = remove_all_chars(mp, '/'); 
 	
 	return rv;
 }
