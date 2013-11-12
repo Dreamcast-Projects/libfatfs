@@ -4,10 +4,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "utils.h"
 #include "fatfs.h"
 
+#include "cache.h"
 #include "dir_entry.h"
 
 unsigned char * extract_long_name(fat_lfn_entry_t *lfn) 
@@ -189,7 +191,6 @@ int fat_write_data(fatfs_t *fat, node_entry_t *file, unsigned char *bbuf, int co
 				}
 				else
 				{
-				
 					/* Set to first cluster */
 					file->CurrCluster = file->StartCluster; 
 			
@@ -530,6 +531,9 @@ void delete_sd_entry(fatfs_t *fat, node_entry_t *file)
 	int ptr = file->Location[1];
 	unsigned char sector[512];
 	
+	/* Delete if from cache */
+	delete_from_cache(file);
+	
 	/* Delete Long file name entries (if any) */
 	ptr -= 32;
 	
@@ -575,53 +579,77 @@ void delete_sd_entry(fatfs_t *fat, node_entry_t *file)
 
 node_entry_t *fat_search_by_path(fatfs_t *fat, const char *fn)
 {	
-	unsigned char *ufn = malloc(strlen(fn)+1);
-	
+	bool in_cache = false;
+	char *ufn = NULL;
 	unsigned char *pch = NULL;
+	unsigned char *filepath = NULL;
+	
 	node_entry_t *temp = NULL;
 	node_entry_t *rv = NULL;
-	unsigned int cluster = fat->root_cluster_num;
 	
-	/* Make sure the files/folders are captialized */
-    strcpy(ufn, fn);
-	ufn[strlen(fn)] = '\0';
+	printf("Searching for %s\n", fn);
 	
-	/* Build Root */
-	temp = malloc(sizeof(node_entry_t));
-	temp->Name = (unsigned char *)remove_all_chars(fat->mount, '/');          /*  */
-	temp->ShortName = (unsigned char *)remove_all_chars(fat->mount, '/');
-	temp->Attr = DIRECTORY;           /* Root directory is obviously a directory */
-	temp->StartCluster = cluster;     /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
-	temp->EndCluster = end_cluster(fat, temp->StartCluster);
+	/* Check if it in cache or cache contains some path of filepath */
+	if((temp = check_cache(fat, fn, &ufn)) != NULL)
+	{
+		in_cache = true;
+	}
+	else /* Otherwise..start from root */
+	{
+		/* Make a copy of filepath */
+		ufn = malloc(strlen(fn)+1);
+		memcpy(ufn, fn, strlen(fn));
+		ufn[strlen(fn)] = '\0';
+		
+		/* Build Root */
+		temp = malloc(sizeof(node_entry_t));
+		temp->Name = (unsigned char *)remove_all_chars(fat->mount, '/');          /*  */
+		temp->ShortName = (unsigned char *)remove_all_chars(fat->mount, '/');
+		temp->Attr = DIRECTORY;           /* Root directory is obviously a directory */
+		temp->StartCluster = fat->root_cluster_num;     /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
+		temp->EndCluster = end_cluster(fat, temp->StartCluster);
+	}
 	
 	rv = temp;
 	
-	pch = strtok(ufn,"/");  /* Grab Root */
-	
-    if(strcasecmp(pch, temp->Name) == 0) {
-        pch = strtok (NULL, "/"); 
+	pch = strtok(ufn,"/");  /* Grab next element */
 
-        while(pch != NULL) {
-            if((rv = search_directory(fat, temp, pch)) != NULL) 
-            {
-				pch = strtok (NULL, "/");
-				delete_struct_entry(temp);
-				temp = rv;
-			}
-			else 
-			{
-				
+	while(pch != NULL) {
+		if((rv = search_directory(fat, temp, pch)) != NULL) 
+		{
+			filepath = realloc(filepath, strlen(filepath) + strlen(pch) + 2);
+			memset(filepath+strlen(filepath), 0, strlen(pch) + 2);
+			strcat(filepath, pch);
+			strcat(filepath, "/");
+		
+			pch = strtok (NULL, "/");
+			delete_struct_entry(temp);
+			temp = rv;
+		}
+		else 
+		{		
 #ifdef FATFS_DEBUG
-				printf("Couldnt find \"%s\" in \"%s\"\n", pch, temp->Name);
+			printf("Couldnt find \"%s\" in \"%s\"\n", pch, temp->Name);
 #endif
-				delete_struct_entry(temp);
-				free(ufn);
-				return NULL;
-			}
+			/* Save last 'temp' in cache */
+			filepath[strlen(filepath)-1] = '\0'; /* Erase last '/' from filepath */
+			add_to_cache(filepath, temp);
+			delete_struct_entry(temp);
+			
+			free(ufn);
+			free(filepath);
+			return NULL;
 		}
 	}
 	
+	/* Save entry in cache? dont accept root */
+	if(strcasecmp(rv->Name, fat->mount) != 0 && !in_cache)
+		add_to_cache(fn, rv);
+	
 	free(ufn);
+	
+	if(filepath != NULL)
+		free(filepath);
 	
 	return rv;
 }
@@ -630,140 +658,144 @@ node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr)
 {
 	int loc[2];
 
-    char *pch;
-    char *filename;
-	char *ufn = malloc(strlen(fn)+1);
+    char *pch = NULL;
+    char *filename = NULL;
+	char *ufn = NULL;
     
     node_entry_t *newfile;
 	node_entry_t *temp = NULL;
 	node_entry_t *rv = NULL;
-	unsigned int cluster = fat->root_cluster_num;
 	
 	fat_dir_entry_t entry;
 	
-	/* Make a copy of fn */
-	memcpy(ufn, fn, strlen(fn));
-	ufn[strlen(fn)] = '\0';
+	/* Check if it in cache or cache contains some path of filepath */
+	temp = check_cache(fat, fn, &ufn);
 	
-	/* Build Root */
-	temp = malloc(sizeof(node_entry_t));
-	temp->Name = (unsigned char *)remove_all_chars(fat->mount, '/');          /*  */
-	temp->ShortName = (unsigned char *)remove_all_chars(fat->mount, '/');
-	temp->Attr = DIRECTORY;          /* Root directory is obviously a directory */
-	temp->StartCluster = cluster;    /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
-	temp->EndCluster = end_cluster(fat, temp->StartCluster);
+	if(temp == NULL)
+	{
+		/* Make a copy of fn */
+		ufn = malloc(strlen(fn)+1);
+		memcpy(ufn, fn, strlen(fn));
+		ufn[strlen(fn)] = '\0';
+		
+		/* Build Root */
+		temp = malloc(sizeof(node_entry_t));
+		temp->Name = (unsigned char *)remove_all_chars(fat->mount, '/');          /*  */
+		temp->ShortName = (unsigned char *)remove_all_chars(fat->mount, '/');
+		temp->Attr = DIRECTORY;          /* Root directory is obviously a directory */
+		temp->StartCluster = fat->root_cluster_num;    /* Root directory has no data clusters associated with it(FAT16). Non-NULL with FAT32 */
+		temp->EndCluster = end_cluster(fat, temp->StartCluster);
+	}
 	
 	rv = temp;
 	
-	pch = strtok(ufn,"/");  /* Grab Root */
+	pch = strtok(ufn,"/");  /* Grab next element */
 	
-    if(strcasecmp(pch, temp->Name) == 0) {
-        pch = strtok (NULL, "/"); 
-
-        while(pch != NULL) {
-            if((rv = search_directory(fat, temp, pch)) != NULL) 
-            {
-				if(rv->Attr & READ_ONLY) /* Check and make sure directory is not read only. */
-				{
-					free(ufn);
-					errno = EROFS;
-					delete_struct_entry(temp);
-					delete_struct_entry(rv);
-					return NULL;
-				}
-				
-                pch = strtok (NULL, "/");
-                delete_struct_entry(temp);
-				temp = rv;
-            }
-            else 
-            {	
-				filename = pch; /* We possibly have the filename */
-                
-                /* Return NULL if we encounter a directory that doesn't exist */
-                if((pch = strtok (NULL, "/"))) { /* See if there is more to parse through */
-					free(ufn);
-                    errno = ENOTDIR;
-					delete_struct_entry(temp);
-                    return NULL;               /* if there is that means we are looking in a directory */
-                }                              /* that doesn't exist. */
-                
-                /* Make sure the filename is valid */
-                if(correct_filename(filename) == -1) {
-					free(ufn);
-					delete_struct_entry(temp);
-                    return NULL;
-                }
-           
-                /* Create file/folder */
-                newfile = (node_entry_t *) malloc(sizeof(node_entry_t));
-				
-                newfile->Name = malloc(strlen(filename)+1); 
-				memcpy(newfile->Name, filename, strlen(filename));
-				newfile->Name[strlen(filename)] = '\0';
-				
-                newfile->Attr = attr;
-                newfile->FileSize = 0;
-                newfile->StartCluster = 0; 
-				newfile->EndCluster = 0;
-                
-                if(generate_and_write_entry(fat, newfile->Name, newfile, temp) == -1)
-                {
-#ifdef FATFS_DEBUG
-					printf("create_entry(dir_entry.c) : Didnt Create file/folder named %s\n", newfile->Name);
-#endif
-					free(ufn);
-					errno = EDQUOT;
-					delete_struct_entry(temp);
-                    delete_struct_entry(newfile);  /* This doesn't take care of removing clusters from SD card */
-                    
-                    return NULL;  
-                }
-				
-				/* If its a folder, add the hidden files "." and ".." */
-				if(attr & DIRECTORY)
-				{
-					/* Add '.' folder entry */ 
-					strncpy(entry.FileName, ".       ", 8);
-					entry.FileName[8] = '\0';
-					strncpy(entry.Ext, "   ", 3 ); 
-					entry.Ext[3] = '\0';
-					entry.Attr = DIRECTORY;
-					entry.FileSize = 0;   
-					entry.FstClusHI = newfile->StartCluster >> 16;
-					entry.FstClusLO = newfile->StartCluster & 0xFFFF;
-					
-					loc[0] = fat->data_sec_loc + (newfile->StartCluster - 2) * fat->boot_sector.sectors_per_cluster;
-					loc[1] = 0;
-					write_entry(fat, &entry, DIRECTORY, loc);
-
-					/* Add '..' folder entry */
-					strncpy(entry.FileName, "..      ", 8);
-					entry.FileName[8] = '\0';
-					strncpy(entry.Ext, "   ", 3 ); 
-					entry.Ext[3] = '\0';
-					entry.Attr = DIRECTORY;
-					entry.FileSize = 0;   
-					if(strcasecmp(temp->Name, fat->mount) == 0) /* If parent of this folder is the root directory, set first cluster number to 0 */
-					{
-						entry.FstClusHI = 0;
-						entry.FstClusLO = 0;
-					}
-					else 
-					{
-						entry.FstClusHI = temp->StartCluster >> 16;
-						entry.FstClusLO = temp->StartCluster & 0xFFFF; 
-					}
-						
-					loc[1] = 32; /* loc[0] Doesnt change */
-					write_entry(fat, &entry, DIRECTORY, loc);
-				}
-				
+	while(pch != NULL) {
+		if((rv = search_directory(fat, temp, pch)) != NULL) 
+		{
+			if(rv->Attr & READ_ONLY) /* Check and make sure directory is not read only. */
+			{
+				free(ufn);
+				errno = EROFS;
+				delete_struct_entry(temp);
+				delete_struct_entry(rv);
+				return NULL;
+			}
+			
+			pch = strtok (NULL, "/");
+			delete_struct_entry(temp);
+			temp = rv;
+		}
+		else 
+		{	
+			filename = pch; /* We possibly have the filename */
+			
+			/* Return NULL if we encounter a directory that doesn't exist */
+			if((pch = strtok (NULL, "/"))) { /* See if there is more to parse through */
+				free(ufn);
+				errno = ENOTDIR;
+				delete_struct_entry(temp);
+				return NULL;               /* if there is that means we are looking in a directory */
+			}                              /* that doesn't exist. */
+			
+			/* Make sure the filename is valid */
+			if(correct_filename(filename) == -1) {
 				free(ufn);
 				delete_struct_entry(temp);
+				return NULL;
+			}
+	   
+			/* Create file/folder */
+			newfile = (node_entry_t *) malloc(sizeof(node_entry_t));
+			
+			newfile->Name = malloc(strlen(filename)+1); 
+			memcpy(newfile->Name, filename, strlen(filename));
+			newfile->Name[strlen(filename)] = '\0';
+			
+			newfile->Attr = attr;
+			newfile->FileSize = 0;
+			newfile->StartCluster = 0; 
+			newfile->EndCluster = 0;
+			
+			if(generate_and_write_entry(fat, newfile->Name, newfile, temp) == -1)
+			{
+#ifdef FATFS_DEBUG
+				printf("create_entry(dir_entry.c) : Didnt Create file/folder named %s\n", newfile->Name);
+#endif
+				free(ufn);
+				errno = EDQUOT;
+				delete_struct_entry(temp);
+				delete_struct_entry(newfile);  /* This doesn't take care of removing clusters from SD card */
 				
-                return newfile;
-            }
+				return NULL;  
+			}
+			
+			/* If its a folder, add the hidden files "." and ".." */
+			if(attr & DIRECTORY)
+			{
+				/* Add '.' folder entry */ 
+				strncpy(entry.FileName, ".       ", 8);
+				entry.FileName[8] = '\0';
+				strncpy(entry.Ext, "   ", 3 ); 
+				entry.Ext[3] = '\0';
+				entry.Attr = DIRECTORY;
+				entry.FileSize = 0;   
+				entry.FstClusHI = newfile->StartCluster >> 16;
+				entry.FstClusLO = newfile->StartCluster & 0xFFFF;
+				
+				loc[0] = fat->data_sec_loc + (newfile->StartCluster - 2) * fat->boot_sector.sectors_per_cluster;
+				loc[1] = 0;
+				write_entry(fat, &entry, DIRECTORY, loc);
+
+				/* Add '..' folder entry */
+				strncpy(entry.FileName, "..      ", 8);
+				entry.FileName[8] = '\0';
+				strncpy(entry.Ext, "   ", 3 ); 
+				entry.Ext[3] = '\0';
+				entry.Attr = DIRECTORY;
+				entry.FileSize = 0;   
+				if(strcasecmp(temp->Name, fat->mount) == 0) /* If parent of this folder is the root directory, set first cluster number to 0 */
+				{
+					entry.FstClusHI = 0;
+					entry.FstClusLO = 0;
+				}
+				else 
+				{
+					entry.FstClusHI = temp->StartCluster >> 16;
+					entry.FstClusLO = temp->StartCluster & 0xFFFF; 
+				}
+					
+				loc[1] = 32; /* loc[0] Doesnt change */
+				write_entry(fat, &entry, DIRECTORY, loc);
+			}
+			
+			add_to_cache(fn, newfile);
+			
+			free(ufn);
+			delete_struct_entry(temp);
+			
+			return newfile;
 		}
 	}
 	
@@ -1226,6 +1258,61 @@ node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last
 	}
 	
 	return NULL;
+}
+
+node_entry_t *build_from_loc(fatfs_t *fat, struct QNode *node)
+{
+	int var = node->Location[1];
+	int sector_loc = node->Location[0];
+	node_entry_t *rv = NULL;
+	fat_dir_entry_t temp;
+	unsigned char *buf = malloc(512 * sizeof(unsigned char));
+	unsigned char shortname[14];
+	
+	/* Read 1 sector */
+	fat->dev->read_blocks(fat->dev, sector_loc, 1, buf);
+	
+	memset(&temp, 0, sizeof(fat_dir_entry_t));
+	memcpy(temp.FileName, (buf+var+FILENAME), 8); 
+	memcpy(temp.Ext, (buf+var+EXTENSION), 3);
+	memcpy(&(temp.Attr), (buf+var+ATTRIBUTE), 1);
+	memcpy(&(temp.Res), (buf+var+RESERVED), 1);
+	memcpy(&(temp.FstClusHI), (buf+var+STARTCLUSTERHI), 2);
+	memcpy(&(temp.FstClusLO), (buf+var+STARTCLUSTERLOW), 2);
+	memcpy(&(temp.FileSize), (buf+var+FILESIZE), 4);
+	
+	memset(shortname, 0, sizeof(unsigned char) *14);
+	
+	strcat(shortname, temp.FileName);
+	
+	if(temp.Ext[0] != ' ') {             /* If we actually have an extension....add it in */
+		if(temp.Attr == VOLUME_ID) { /* Extension is part of the VOLUME name(node->FileName) */
+			strcat(shortname, temp.Ext);
+		}
+		else {
+			strcat(shortname, ".");
+			strcat(shortname, temp.Ext);
+		}
+	}
+	
+	rv = malloc(sizeof(node_entry_t));
+	
+	rv->ShortName = malloc(strlen(shortname)+1);
+	strcpy(rv->ShortName, shortname);
+	rv->ShortName[strlen(shortname)] = '\0';
+	rv->Attr = temp.Attr;
+	rv->FileSize = temp.FileSize;
+	rv->Location[0] = sector_loc;
+	rv->Location[1] = var;
+	rv->StartCluster = ((temp.FstClusHI << 16) | temp.FstClusLO);
+	rv->EndCluster = end_cluster(fat, rv->StartCluster);
+	
+	rv->CurrCluster = 0;
+	rv->NumCluster = 0;
+
+	free(buf);
+	
+	return rv;
 }
 
 

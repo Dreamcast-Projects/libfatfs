@@ -845,6 +845,22 @@ int strcasecmp( const char *s1, const char *s2 )
 	}
 }
 
+int strncasecmp( const char *s1, const char *s2, size_t n )
+{
+	int i;
+	int c1, c2;
+	for(i = 0;i < n;i++)
+	{
+		c1 = tolower( (unsigned char) *s1++ );
+		c2 = tolower( (unsigned char) *s2++ );
+		if (c1 == 0 || c1 != c2)
+			return c1 - c2;
+	}
+	
+	return -1;
+}
+
+
 unsigned int end_cluster(fatfs_t *fat, unsigned int start_cluster)
 {
 	unsigned int clust = start_cluster;

@@ -45,6 +45,8 @@ __BEGIN_DECLS
 #define DELETED   0xE5     /* The first byte of a deleted entry */
 #define EMPTY     0        /* Shows an empty entry */
 
+struct QNode;
+
 typedef struct fatfs fatfs_t;
 
 typedef struct fat_long_fn_dir_entry fat_lfn_entry_t;
@@ -143,6 +145,8 @@ node_entry_t *search_directory(fatfs_t *fat, node_entry_t *node, const char *fn)
 node_entry_t *browse_sector(fatfs_t *fat, unsigned int sector_loc, unsigned int ptr, const char *fn);
 node_entry_t *get_next_entry(fatfs_t *fat, node_entry_t *dir, node_entry_t *last_entry);
 node_entry_t *create_entry(fatfs_t *fat, const char *fn, unsigned char attr);
+
+node_entry_t *build_from_loc(fatfs_t *fat, struct QNode *node);
 
 __END_DECLS
 #endif /* _FAT_DIR_ENTRY_H_ */

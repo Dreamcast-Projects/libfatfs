@@ -16,6 +16,8 @@
 #include "fat_defs.h"
 #include "dir_entry.h"
 
+#include "cache.h"
+
 #define MAX_FAT_FILES 16
 
 typedef struct fs_fat_fs {
@@ -49,8 +51,6 @@ static struct {
 static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     file_t fd;
     fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
-	
-	char *ufn = NULL; 
     node_entry_t *found = NULL;
 
     /* Make sure if we're going to be writing to the file that the fs is mounted
@@ -60,40 +60,30 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
         errno = EROFS;
         return NULL;
     }
-	
-	/* Make sure to add the root directory to the fn */
-	ufn = malloc(strlen(fn)+strlen(mnt->fs->mount)+1); 
-	memset(ufn, 0, strlen(fn)+strlen(mnt->fs->mount)+1);
-    strcat(ufn, mnt->fs->mount);
-    strcat(ufn, fn);
 
-	found = fat_search_by_path(mnt->fs, ufn);
+	found = fat_search_by_path(mnt->fs, fn);
 
     /* Handle a few errors */
     if(found == NULL && !(mode & O_CREAT)) {
         errno = ENOENT;
-		free(ufn);
         return NULL;
     }
     else if(found != NULL && (mode & O_CREAT) && (mode & O_EXCL)) {
         errno = EEXIST;
 		delete_struct_entry(found);
-		free(ufn);
         return NULL;
     }
     else if(found == NULL && (mode & O_CREAT)) {
-		found = create_entry(mnt->fs, ufn, ARCHIVE);
+		found = create_entry(mnt->fs, fn, ARCHIVE);
 		
         if(found == NULL)
 		{
-			free(ufn);
             return NULL;
 		}
     }
     else if(found != NULL && (found->Attr & READ_ONLY) && ((mode & O_WRONLY) || (mode & O_RDWR))) {
 		errno = EROFS;
 		delete_struct_entry(found);
-		free(ufn);
 		return NULL;
     }
     
@@ -117,7 +107,6 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
 
     if(fd >= MAX_FAT_FILES) {
         errno = ENFILE;
-		free(ufn);
 		delete_struct_entry(found);
         mutex_unlock(&fat_mutex);
         return NULL;
@@ -126,7 +115,6 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     /* Make sure we're not trying to open a directory for writing */
     if((found->Attr & DIRECTORY) && (mode & (O_WRONLY | O_RDWR))) {
         errno = EISDIR;
-		free(ufn);
 		delete_struct_entry(found);
         mutex_unlock(&fat_mutex);
         return NULL;
@@ -135,7 +123,6 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     /* Make sure if we're trying to open a directory that we have a directory */
     if((mode & O_DIR) && !(found->Attr & DIRECTORY)) {
         errno = ENOTDIR;
-		free(ufn);
 		delete_struct_entry(found);
         mutex_unlock(&fat_mutex);
         return NULL;
@@ -151,8 +138,6 @@ static void *fs_fat_open(vfs_handler_t *vfs, const char *fn, int mode) {
     fh[fd].dir = NULL;
 
     mutex_unlock(&fat_mutex);
-	
-	free(ufn);
 
     return (void *)(fd + 1);
 }
@@ -400,27 +385,14 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
 	int i;
     fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
     node_entry_t *found = NULL;
-	char *cpy;
 	
 	unsigned char attr;
 	unsigned int start_cluster;
 	unsigned int filesize;
 
-    /* Make sure we get valid filenames. */
+    /* Make sure we get valid filenames. (No, you cannot move the root directory.) */
     if(!fn1 || !fn2) {
         errno = ENOENT;
-        return -1;
-    }
-	
-	/* Make a copy of old and cat mount to it */
-	cpy = malloc(strlen(fn1) + strlen(mnt->fs->mount) + 1);
-	memset(cpy, 0, strlen(fn1) + strlen(mnt->fs->mount) + 1);
-	strcat(cpy, mnt->fs->mount);
-	strcat(cpy, fn1);
-	
-    /* No, you cannot move the root directory. */
-    if(strcasecmp(cpy, mnt->fs->mount) == 0) {
-        errno = EBUSY;
         return -1;
     }
 
@@ -430,9 +402,7 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
         return -1;
     }
 	
-	found = fat_search_by_path(mnt->fs, cpy);
-	
-	free(cpy);
+	found = fat_search_by_path(mnt->fs, fn1);
 		
 	mutex_lock(&fat_mutex);
 	
@@ -475,19 +445,11 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
 		return -1;
 	}
 	
-	/* Make a copy of new and cat mount to it */
-	cpy = malloc(strlen(fn2) + strlen(mnt->fs->mount) + 1);
-	memset(cpy, 0, strlen(fn2) + strlen(mnt->fs->mount) + 1);
-	strcat(cpy, mnt->fs->mount);
-	strcat(cpy, fn2);
-	
 	/* See if new filename already exists */
-	found = fat_search_by_path(mnt->fs, cpy);
+	found = fat_search_by_path(mnt->fs, fn2);
 	
 	if(found)
 	{
-		free(cpy);
-		
 		if(found->Attr & DIRECTORY)
 		{
 			/* Make sure directory is empty besides "." and ".." */
@@ -540,9 +502,8 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
 		}
 	}
 	
-	if((found = create_entry(mnt->fs, cpy, attr)) == NULL)
+	if((found = create_entry(mnt->fs, fn2, attr)) == NULL)
 	{
-		free(cpy);
 		mutex_unlock(&fat_mutex);
 		return -1;
 	}
@@ -560,7 +521,6 @@ static int fs_fat_rename(vfs_handler_t *vfs, const char *fn1, const char *fn2) {
 		update_sd_entry(mnt->fs, found);
 	}
 	
-	free(cpy);
 	delete_struct_entry(found);
     mutex_unlock(&fat_mutex);
 	
@@ -572,18 +532,10 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 	int i;
 	node_entry_t *f = NULL;
 	fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
-	char *ufn = NULL;
-
-	ufn = malloc(strlen(fn)+strlen(mnt->fs->mount)+1); 
-	memset(ufn, 0, strlen(fn)+strlen(mnt->fs->mount)+1);    
-    strcat(ufn, mnt->fs->mount);
-    strcat(ufn, fn);
 
     mutex_lock(&fat_mutex);
 	
-	f = fat_search_by_path(mnt->fs, ufn);
-	
-	free(ufn);
+	f = fat_search_by_path(mnt->fs, fn);
 
     if(f) {
         /* Make sure it's not in use */
@@ -639,49 +591,40 @@ static int fs_fat_unlink(vfs_handler_t * vfs, const char *fn) {
 
 static int fs_fat_mkdir(vfs_handler_t *vfs, const char *fn)
 {
-    char *ufn = NULL;
     fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
     node_entry_t *found = NULL;
-
-	ufn = malloc(strlen(fn)+strlen(mnt->fs->mount)+1); 
-    memset(ufn, 0, strlen(fn)+strlen(mnt->fs->mount)+1);    
-    strcat(ufn, mnt->fs->mount);
-    strcat(ufn, fn);
+	
+	printf("MKDIR: %s\n", fn);
 
     /* Make sure there is a filename given */
     if(!fn) {
         errno = ENOENT;
-		free(ufn);
         return -1;
     }
 
     /* Make sure the fs is writable */
     if(!(mnt->mount_flags & FS_FAT_MOUNT_READWRITE)) {
         errno = EROFS;
-		free(ufn);
         return -1;
     }
 
-	found = fat_search_by_path(mnt->fs, ufn);
+	found = fat_search_by_path(mnt->fs, fn);
 
     /* Handle a few errors */
     if(found != NULL) {
         errno = EEXIST;  
 		delete_struct_entry(found);
-		free(ufn);
         return -1;
     }
 
-	found = create_entry(mnt->fs, ufn, DIRECTORY);
+	found = create_entry(mnt->fs, fn, DIRECTORY);
  
     if(found == NULL)
 	{
 		errno = ENOSPC;
-		free(ufn);
 		return -1;
 	}
 		
-	free(ufn);
 	delete_struct_entry(found);
 
     return 0;
@@ -691,20 +634,12 @@ static int fs_fat_rmdir(vfs_handler_t *vfs, const char *fn)
 {
 	int i;
 	node_entry_t *f = NULL;
-	char *ufn = NULL;
 	fs_fat_fs_t *mnt = (fs_fat_fs_t *)vfs->privdata;
 	
-	ufn = malloc(strlen(fn)+strlen(mnt->fs->mount)+1); 
-	memset(ufn, 0, strlen(fn)+strlen(mnt->fs->mount)+1);    
-    strcat(ufn, mnt->fs->mount);
-    strcat(ufn, fn);
-
     mutex_lock(&fat_mutex);
 
-	f = fat_search_by_path(mnt->fs, ufn);
+	f = fat_search_by_path(mnt->fs, fn);
 	
-	free(ufn);
-
     if(f) {
         /* Make sure it's not in use */
 		for(i=0;i<MAX_FAT_FILES; i++)
@@ -895,6 +830,8 @@ int fs_fat_mount(const char *mp, kos_blockdev_t *dev, uint32_t flags) {
         mutex_unlock(&fat_mutex);
         return -1;
     }
+	
+	init_cache();
 
     mutex_unlock(&fat_mutex);
 
@@ -935,6 +872,8 @@ int fs_fat_unmount(const char *mp) {
 				fh[j].dir = NULL;
 			}
 		}
+		
+		deinit_cache();
 		
         LIST_REMOVE(i, entry);
 
